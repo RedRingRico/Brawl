@@ -33,7 +33,6 @@ namespace Brawl
 	static const int32_t kMaxFramesInFlight = 2;
 
 	Renderer::Renderer( ) :
-		//m_pGameWindowData( Null ),
 		m_pGameWindow( Null ),
 		m_VulkanLibrary( InvalidLibraryHandle ),
 		m_VulkanInstance( VK_NULL_HANDLE ),
@@ -159,6 +158,7 @@ namespace Brawl
 
 	void Renderer::Terminate( )
 	{
+		vkDeviceWaitIdle( m_VulkanDevice );
 		this->CleanupSwapchain( );
 
 		for( size_t Frame = 0; Frame < kMaxFramesInFlight; ++Frame )
