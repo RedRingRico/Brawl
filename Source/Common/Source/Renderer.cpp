@@ -878,6 +878,9 @@ namespace Brawl
 			return ErrorCode::FatalError;
 		}
 
+		pVertexShaderFile->Rewind( );
+		pFragmentShaderFile->Rewind( );
+
 		std::vector< Byte > VertexShaderContents(
 			pVertexShaderFile->GetSize( ) );
 		uint64_t ReadBytes;
