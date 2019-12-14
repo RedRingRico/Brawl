@@ -1207,55 +1207,123 @@ namespace Brawl
 
 	ErrorCode Renderer::CreateVertexBuffer( )
 	{
+		VkDeviceSize BufferSize = sizeof( m_Vertices[ 0 ] ) *
+			m_Vertices.size( );
+
+		VkBuffer StagingBuffer;
+		VkDeviceMemory StagingBufferMemory;
+
+		CreateBuffer( BufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, StagingBuffer,
+			StagingBufferMemory );
+
+		void *pVertexData;
+		vkMapMemory( m_VulkanDevice, StagingBufferMemory, 0, BufferSize, 0,
+			&pVertexData );
+
+		memcpy( pVertexData, m_Vertices.data( ),
+			static_cast< size_t >( BufferSize ) );
+
+		vkUnmapMemory( m_VulkanDevice, StagingBufferMemory );
+
+
+		CreateBuffer( BufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+				VK_BUFFER_USAGE_TRANSFER_DST_BIT, 
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_VertexBuffer,
+			m_VertexBufferMemory );
+
+		CopyBuffer( StagingBuffer, m_VertexBuffer, BufferSize );
+
+		vkDestroyBuffer( m_VulkanDevice, StagingBuffer, Null );
+		vkFreeMemory( m_VulkanDevice, StagingBufferMemory, Null );
+
+		return ErrorCode::Okay;
+	}
+
+	ErrorCode Renderer::CreateBuffer( VkDeviceSize p_Size,
+		VkBufferUsageFlags p_Usage, VkMemoryPropertyFlags p_Properties,
+		VkBuffer &p_Buffer, VkDeviceMemory &p_BufferMemory )
+	{
 		VkBufferCreateInfo BufferCreateInfo = { };
 		BufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-		BufferCreateInfo.size = sizeof( m_Vertices[ 0 ] ) * m_Vertices.size( );
-		BufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		BufferCreateInfo.size = p_Size;
+		BufferCreateInfo.usage = p_Usage;
 		BufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 		if( vkCreateBuffer( m_VulkanDevice, &BufferCreateInfo, Null,
-			&m_VertexBuffer ) != VK_SUCCESS )
+			&p_Buffer ) != VK_SUCCESS )
 		{
-			std::cout << "[Brawl::Renderer::CreateVertexBuffer] <ERROR> "
+			std::cout << "[Brawl::Renderer::VertexBuffer] <ERROR> "
 				"Call to vkCreateBuffer failed" << std::endl;
 
 			return ErrorCode::VulkanCreateBufferFailed;
 		}
 
 		VkMemoryRequirements MemoryRequirements;
-		vkGetBufferMemoryRequirements( m_VulkanDevice, m_VertexBuffer,
+		vkGetBufferMemoryRequirements( m_VulkanDevice, p_Buffer,
 			&MemoryRequirements );
 
 		VkMemoryAllocateInfo AllocateInfo = { };
 		AllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 		AllocateInfo.allocationSize = MemoryRequirements.size;
 		AllocateInfo.memoryTypeIndex = FindMemoryType(
-			MemoryRequirements.memoryTypeBits,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
+			MemoryRequirements.memoryTypeBits, p_Properties );
 		// memoryTypeIndex should be verified it is valid!!
 
 		if( vkAllocateMemory( m_VulkanDevice, &AllocateInfo, Null,
-			&m_VertexBufferMemory ) != VK_SUCCESS )
+			&p_BufferMemory ) != VK_SUCCESS )
 		{
-			std::cout << "[Brawl::Renderer::CreateVertexBuffer] <ERROR> "
+			std::cout << "[Brawl::Renderer::VertexBuffer] <ERROR> "
 				"Failed to alocate memory" << std::endl;
 
 			return ErrorCode::VulkanAllocateMemoryFailed;
 		}
 
-		vkBindBufferMemory( m_VulkanDevice, m_VertexBuffer,
-			m_VertexBufferMemory, 0 );
+		vkBindBufferMemory( m_VulkanDevice, p_Buffer, p_BufferMemory, 0 );
 
-		void *pVertexData;
-		vkMapMemory( m_VulkanDevice, m_VertexBufferMemory, 0,
-			BufferCreateInfo.size, 0, &pVertexData );
+		return ErrorCode::Okay;
+	}
 
-		memcpy( pVertexData, m_Vertices.data( ),
-			static_cast< size_t >( BufferCreateInfo.size ) );
+	ErrorCode Renderer::CopyBuffer( VkBuffer p_Source, VkBuffer p_Destination,
+			VkDeviceSize p_Size )
+	{
+		VkCommandBufferAllocateInfo AllocateInfo = { };
+		AllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		AllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		AllocateInfo.commandPool = m_CommandPool;
+		AllocateInfo.commandBufferCount = 1;
 
-		vkUnmapMemory( m_VulkanDevice, m_VertexBufferMemory );
+		VkCommandBuffer CommandBuffer;
+		vkAllocateCommandBuffers( m_VulkanDevice, &AllocateInfo,
+			&CommandBuffer );
 
+		VkCommandBufferBeginInfo BeginInfo = { };
+		BeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		BeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		vkBeginCommandBuffer( CommandBuffer, &BeginInfo );
+
+		VkBufferCopy CopyRegion = { };
+		CopyRegion.srcOffset = 0;
+		CopyRegion.dstOffset = 0;
+		CopyRegion.size = p_Size;
+
+		vkCmdCopyBuffer( CommandBuffer, p_Source, p_Destination, 1,
+			&CopyRegion );
+
+		vkEndCommandBuffer( CommandBuffer );
+
+		VkSubmitInfo SubmitInfo = { };
+		SubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		SubmitInfo.commandBufferCount = 1;
+		SubmitInfo.pCommandBuffers = &CommandBuffer;
+
+		vkQueueSubmit( m_GraphicsQueue, 1, &SubmitInfo, VK_NULL_HANDLE );
+		vkQueueWaitIdle( m_GraphicsQueue );
+
+		vkFreeCommandBuffers( m_VulkanDevice, m_CommandPool, 1,
+			&CommandBuffer );
 
 		return ErrorCode::Okay;
 	}

@@ -65,6 +65,11 @@ namespace Brawl
 		ErrorCode CreateFramebuffers( );
 		ErrorCode CreateCommandPool( );
 		ErrorCode CreateVertexBuffer( );
+		ErrorCode CreateBuffer( VkDeviceSize p_Size,
+			VkBufferUsageFlags p_Usage, VkMemoryPropertyFlags p_Properties,
+			VkBuffer &p_Buffer, VkDeviceMemory &p_BufferMemory );
+		ErrorCode CopyBuffer( VkBuffer p_Source, VkBuffer p_Destination,
+			VkDeviceSize p_Size );
 
 		uint32_t GetSwapchainImageCount(
 			VkSurfaceCapabilitiesKHR &p_SurfaceCapabilities );
