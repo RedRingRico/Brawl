@@ -65,6 +65,7 @@ namespace Brawl
 		ErrorCode CreateFramebuffers( );
 		ErrorCode CreateCommandPool( );
 		ErrorCode CreateVertexBuffer( );
+		ErrorCode CreateIndexBuffer( );
 		ErrorCode CreateBuffer( VkDeviceSize p_Size,
 			VkBufferUsageFlags p_Usage, VkMemoryPropertyFlags p_Properties,
 			VkBuffer &p_Buffer, VkDeviceMemory &p_BufferMemory );
@@ -128,8 +129,11 @@ namespace Brawl
 
 		// Example vertices
 		std::vector< Vertex >			m_Vertices;
+		std::vector< uint16_t >			m_Indices;
 		VkBuffer						m_VertexBuffer;
 		VkDeviceMemory					m_VertexBufferMemory;
+		VkBuffer						m_IndexBuffer;
+		VkDeviceMemory					m_IndexBufferMemory;
 	};
 }
 

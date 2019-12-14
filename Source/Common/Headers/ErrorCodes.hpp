@@ -58,6 +58,7 @@ namespace Brawl
 		VulkanCreateBufferFailed,
 		VulkanAllocateMemoryFailed,
 		CreateVulkanVertexBufferFailed,
+		CreateBVulkanIndexBufferFailed,
 
 		// System
 		CloseLibraryFailed = -1000,

@@ -83,13 +83,23 @@ namespace Brawl
 		m_CanRender( False ),
 		m_Resize( False ),
 		m_VertexBuffer( VK_NULL_HANDLE ),
-		m_VertexBufferMemory( VK_NULL_HANDLE )
+		m_VertexBufferMemory( VK_NULL_HANDLE ),
+		m_IndexBuffer( VK_NULL_HANDLE ),
+		m_IndexBufferMemory( VK_NULL_HANDLE )
 	{
 		Vertex NewVertex;
 
-		NewVertex.Position[ 0 ] = 0.0f;
+		NewVertex.Position[ 0 ] = -0.5f;
 		NewVertex.Position[ 1 ] = -0.5f;
 		NewVertex.Colour[ 0 ] = 1.0f;
+		NewVertex.Colour[ 1 ] = 0.0f;
+		NewVertex.Colour[ 2 ] = 0.0f;
+
+		m_Vertices.push_back( NewVertex );
+
+		NewVertex.Position[ 0 ] = 0.5f;
+		NewVertex.Position[ 1 ] = -0.5f;
+		NewVertex.Colour[ 0 ] = 0.0f;
 		NewVertex.Colour[ 1 ] = 1.0f;
 		NewVertex.Colour[ 2 ] = 0.0f;
 
@@ -98,18 +108,20 @@ namespace Brawl
 		NewVertex.Position[ 0 ] = 0.5f;
 		NewVertex.Position[ 1 ] = 0.5f;
 		NewVertex.Colour[ 0 ] = 0.0f;
-		NewVertex.Colour[ 1 ] = 1.0f;
-		NewVertex.Colour[ 2 ] = 0.0f;
+		NewVertex.Colour[ 1 ] = 0.0f;
+		NewVertex.Colour[ 2 ] = 1.0f;
 
 		m_Vertices.push_back( NewVertex );
 
 		NewVertex.Position[ 0 ] = -0.5f;
 		NewVertex.Position[ 1 ] = 0.5f;
-		NewVertex.Colour[ 0 ] = 0.0f;
-		NewVertex.Colour[ 1 ] = 0.0f;
+		NewVertex.Colour[ 0 ] = 1.0f;
+		NewVertex.Colour[ 1 ] = 1.0f;
 		NewVertex.Colour[ 2 ] = 1.0f;
 
 		m_Vertices.push_back( NewVertex );
+
+		m_Indices = { 0, 1, 2, 2, 3, 0 };
 	}
 
 	Renderer::~Renderer( )
@@ -202,6 +214,11 @@ namespace Brawl
 			return ErrorCode::CreateVulkanVertexBufferFailed;
 		}
 
+		if( this->CreateIndexBuffer( ) != ErrorCode::Okay )
+		{
+			return ErrorCode::CreateBVulkanIndexBufferFailed;
+		}
+
 		if( this->CreateCommandBuffers( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanCommandBuffersFailed;
@@ -221,6 +238,9 @@ namespace Brawl
 	{
 		vkDeviceWaitIdle( m_VulkanDevice );
 		this->CleanupSwapchain( );
+
+		vkDestroyBuffer( m_VulkanDevice, m_IndexBuffer, Null );
+		vkFreeMemory( m_VulkanDevice, m_IndexBufferMemory, Null );
 
 		vkDestroyBuffer( m_VulkanDevice, m_VertexBuffer, Null );
 		vkFreeMemory( m_VulkanDevice, m_VertexBufferMemory, Null );
@@ -455,11 +475,17 @@ namespace Brawl
 
 		VkDebugUtilsMessengerCreateInfoEXT DebugCreateInfo;
 
+#if defined( BRAWL_BUILD_DEBUG )
 		InstanceCreateInfo.enabledLayerCount =
 			static_cast< uint32_t >( ValidationLayers.size( ) );
 		InstanceCreateInfo.ppEnabledLayerNames = ValidationLayers.data( );
 		PopulateDebugMessengerCreateInfo( DebugCreateInfo );
 		InstanceCreateInfo.pNext = ( VkDebugUtilsMessengerCreateInfoEXT * )&DebugCreateInfo;
+#else
+		InstanceCreateInfo.enabledLayerCount = 0;
+		InstanceCreateInfo.ppEnabledLayerNames = Null;
+		InstanceCreateInfo.pNext = Null;
+#endif // BRAWL_BUILD_DEBUG
 
 		if( vkCreateInstance( &InstanceCreateInfo, Null, &m_VulkanInstance ) !=
 			VK_SUCCESS )
@@ -1241,6 +1267,41 @@ namespace Brawl
 		return ErrorCode::Okay;
 	}
 
+	ErrorCode Renderer::CreateIndexBuffer( )
+	{
+		VkDeviceSize BufferSize = sizeof( m_Indices[ 0 ] ) * m_Indices.size( );
+
+		VkBuffer StagingBuffer;
+		VkDeviceMemory StagingBufferMemory;
+
+		CreateBuffer( BufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			StagingBuffer, StagingBufferMemory );
+
+		void *pIndexData;
+
+		vkMapMemory( m_VulkanDevice, StagingBufferMemory, 0, BufferSize, 0,
+			&pIndexData );
+
+		memcpy( pIndexData, m_Indices.data( ),
+			static_cast< size_t >( BufferSize ) );
+
+		vkUnmapMemory( m_VulkanDevice, StagingBufferMemory );
+
+		CreateBuffer( BufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+				VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_IndexBuffer,
+			m_IndexBufferMemory );
+
+		CopyBuffer( StagingBuffer, m_IndexBuffer, BufferSize );
+		
+		vkDestroyBuffer( m_VulkanDevice, StagingBuffer, Null );
+		vkFreeMemory( m_VulkanDevice, StagingBufferMemory, Null );
+
+		return ErrorCode::Okay;
+	}
+
 	ErrorCode Renderer::CreateBuffer( VkDeviceSize p_Size,
 		VkBufferUsageFlags p_Usage, VkMemoryPropertyFlags p_Properties,
 		VkBuffer &p_Buffer, VkDeviceMemory &p_BufferMemory )
@@ -1903,10 +1964,13 @@ namespace Brawl
 			VkDeviceSize Offsets[ ] = { 0 };
 			vkCmdBindVertexBuffers( m_CommandBuffers[ Buffer ], 0, 1,
 				VertexBuffers, Offsets );
+			vkCmdBindIndexBuffer( m_CommandBuffers[ Buffer ], m_IndexBuffer, 0,
+				VK_INDEX_TYPE_UINT16 );
 
-			vkCmdDraw( m_CommandBuffers[ Buffer ],
-				static_cast< uint32_t >( m_Vertices.size( ) ), 1, 0, 0 );
-
+			/*vkCmdDraw( m_CommandBuffers[ Buffer ],
+				static_cast< uint32_t >( m_Vertices.size( ) ), 1, 0, 0 );*/
+			vkCmdDrawIndexed( m_CommandBuffers[ Buffer ],
+				static_cast< uint32_t >( m_Indices.size( ) ), 1, 0, 0, 0 );
 			vkCmdEndRenderPass( m_CommandBuffers[ Buffer ] );
 
 			if( vkEndCommandBuffer( m_CommandBuffers[ Buffer ] ) !=
