@@ -55,6 +55,9 @@ namespace Brawl
 		VulkanCreateSemaphoreFailed,
 		VulkanQueueSubmitFailed,
 		MissingVulkanValidationLayers,
+		VulkanCreateBufferFailed,
+		VulkanAllocateMemoryFailed,
+		CreateVulkanVertexBufferFailed,
 
 		// System
 		CloseLibraryFailed = -1000,

@@ -5,11 +5,22 @@
 #include <vulkan/vulkan.h>
 
 #include <vector>
+#include <array>
 
 namespace Brawl
 {
 	class GameWindow;
 	class GameWindowData;
+
+	struct Vertex
+	{
+		float	Position[ 2 ];
+		float	Colour[ 3 ];
+
+		static VkVertexInputBindingDescription GetBindingDescription( );
+		static std::array< VkVertexInputAttributeDescription, 2 >
+			GetAttributeDescriptions( );
+	};
 
 	class Renderer
 	{
@@ -53,6 +64,7 @@ namespace Brawl
 		ErrorCode CreateGraphicsPipeline( );
 		ErrorCode CreateFramebuffers( );
 		ErrorCode CreateCommandPool( );
+		ErrorCode CreateVertexBuffer( );
 
 		uint32_t GetSwapchainImageCount(
 			VkSurfaceCapabilitiesKHR &p_SurfaceCapabilities );
@@ -66,6 +78,9 @@ namespace Brawl
 			VkSurfaceCapabilitiesKHR &p_SurfaceCapabilities );
 		VkPresentModeKHR GetSwapchainPresentMode(
 			std::vector< VkPresentModeKHR > &p_PresentModes );
+
+		uint32_t FindMemoryType( uint32_t p_TypeFilter,
+			VkMemoryPropertyFlags p_Properties );
 
 		Bool CheckExtensionAvailability( const char *p_pExtensionName,
 			const std::vector< VkExtensionProperties > &p_Extensions );
@@ -105,6 +120,11 @@ namespace Brawl
 
 		Bool				m_CanRender;
 		Bool				m_Resize;
+
+		// Example vertices
+		std::vector< Vertex >			m_Vertices;
+		VkBuffer						m_VertexBuffer;
+		VkDeviceMemory					m_VertexBufferMemory;
 	};
 }
 

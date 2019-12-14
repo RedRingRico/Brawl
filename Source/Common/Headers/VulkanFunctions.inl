@@ -34,6 +34,7 @@ VK_INSTANCE_LEVEL_FUNCTION( vkGetDeviceProcAddr )
 VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceCapabilitiesKHR )
 VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceFormatsKHR )
 VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfacePresentModesKHR )
+VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceMemoryProperties )
 
 #undef VK_INSTANCE_LEVEL_FUNCTION
 
@@ -79,6 +80,15 @@ VK_DEVICE_LEVEL_FUNCTION( vkQueuePresentKHR )
 VK_DEVICE_LEVEL_FUNCTION( vkQueueWaitIdle )
 VK_DEVICE_LEVEL_FUNCTION( vkWaitForFences )
 VK_DEVICE_LEVEL_FUNCTION( vkResetFences )
+VK_DEVICE_LEVEL_FUNCTION( vkCreateBuffer )
+VK_DEVICE_LEVEL_FUNCTION( vkDestroyBuffer )
+VK_DEVICE_LEVEL_FUNCTION( vkGetBufferMemoryRequirements )
+VK_DEVICE_LEVEL_FUNCTION( vkAllocateMemory )
+VK_DEVICE_LEVEL_FUNCTION( vkFreeMemory )
+VK_DEVICE_LEVEL_FUNCTION( vkBindBufferMemory )
+VK_DEVICE_LEVEL_FUNCTION( vkMapMemory )
+VK_DEVICE_LEVEL_FUNCTION( vkUnmapMemory )
+VK_DEVICE_LEVEL_FUNCTION( vkCmdBindVertexBuffers )
 
 #undef VK_DEVICE_LEVEL_FUNCTION
 

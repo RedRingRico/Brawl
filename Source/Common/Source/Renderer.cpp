@@ -14,6 +14,35 @@
 
 namespace Brawl
 {
+	VkVertexInputBindingDescription Vertex::GetBindingDescription( )
+	{
+		VkVertexInputBindingDescription BindingDescription = { };
+		BindingDescription.binding = 0;
+		BindingDescription.stride = sizeof( Vertex );
+		BindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+		return BindingDescription;
+	}
+
+	std::array< VkVertexInputAttributeDescription, 2 >
+		Vertex::GetAttributeDescriptions( )
+	{
+		std::array< VkVertexInputAttributeDescription, 2 >
+			AttributeDescriptions = { };
+
+		AttributeDescriptions[ 0 ].binding = 0;
+		AttributeDescriptions[ 0 ].location = 0;
+		AttributeDescriptions[ 0 ].format = VK_FORMAT_R32G32_SFLOAT;
+		AttributeDescriptions[ 0 ].offset = offsetof( Vertex, Position );
+
+		AttributeDescriptions[ 1 ].binding = 0;
+		AttributeDescriptions[ 1 ].location = 1;
+		AttributeDescriptions[ 1 ].format = VK_FORMAT_R32G32B32_SFLOAT;
+		AttributeDescriptions[ 1 ].offset = offsetof( Vertex, Colour );
+
+		return AttributeDescriptions;
+	}
+
 	VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
 		    auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
 			    if (func != nullptr) {
@@ -52,8 +81,35 @@ namespace Brawl
 		m_CommandPool( VK_NULL_HANDLE ),
 		m_CurrentFrame( 0 ),
 		m_CanRender( False ),
-		m_Resize( False )
+		m_Resize( False ),
+		m_VertexBuffer( VK_NULL_HANDLE ),
+		m_VertexBufferMemory( VK_NULL_HANDLE )
 	{
+		Vertex NewVertex;
+
+		NewVertex.Position[ 0 ] = 0.0f;
+		NewVertex.Position[ 1 ] = -0.5f;
+		NewVertex.Colour[ 0 ] = 1.0f;
+		NewVertex.Colour[ 1 ] = 1.0f;
+		NewVertex.Colour[ 2 ] = 0.0f;
+
+		m_Vertices.push_back( NewVertex );
+
+		NewVertex.Position[ 0 ] = 0.5f;
+		NewVertex.Position[ 1 ] = 0.5f;
+		NewVertex.Colour[ 0 ] = 0.0f;
+		NewVertex.Colour[ 1 ] = 1.0f;
+		NewVertex.Colour[ 2 ] = 0.0f;
+
+		m_Vertices.push_back( NewVertex );
+
+		NewVertex.Position[ 0 ] = -0.5f;
+		NewVertex.Position[ 1 ] = 0.5f;
+		NewVertex.Colour[ 0 ] = 0.0f;
+		NewVertex.Colour[ 1 ] = 0.0f;
+		NewVertex.Colour[ 2 ] = 1.0f;
+
+		m_Vertices.push_back( NewVertex );
 	}
 
 	Renderer::~Renderer( )
@@ -141,6 +197,11 @@ namespace Brawl
 			return ErrorCode::CreateVulkanCommandPoolFailed;
 		}
 
+		if( this->CreateVertexBuffer( ) != ErrorCode::Okay )
+		{
+			return ErrorCode::CreateVulkanVertexBufferFailed;
+		}
+
 		if( this->CreateCommandBuffers( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanCommandBuffersFailed;
@@ -160,6 +221,9 @@ namespace Brawl
 	{
 		vkDeviceWaitIdle( m_VulkanDevice );
 		this->CleanupSwapchain( );
+
+		vkDestroyBuffer( m_VulkanDevice, m_VertexBuffer, Null );
+		vkFreeMemory( m_VulkanDevice, m_VertexBufferMemory, Null );
 
 		for( size_t Frame = 0; Frame < kMaxFramesInFlight; ++Frame )
 		{
@@ -476,7 +540,7 @@ namespace Brawl
 			return ErrorCode::PhysicalVulkanDeviceEnumerationFailed;
 		}
 
-		std::cout << "[Brawl::Renderer:CreateVulkanDevice] <INFO> Found " <<
+		std::cout << "[Brawl::Renderer::CreateVulkanDevice] <INFO> Found " <<
 			DeviceCount << ( DeviceCount == 1 ? " device" : "devices" ) <<
 			std::endl;
 
@@ -926,15 +990,18 @@ namespace Brawl
 			FragmentShaderStageInfo
 		};
 
+		auto BindingDescription = Vertex::GetBindingDescription( );
+		auto AttributeDescriptions = Vertex::GetAttributeDescriptions( );
+
 		VkPipelineVertexInputStateCreateInfo VertexInputStateInfo =
 		{
 			VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
 			Null,
 			0,
-			0,
-			Null,
-			0,
-			Null
+			1,
+			&BindingDescription,
+			static_cast< uint32_t >( AttributeDescriptions.size( ) ),
+			AttributeDescriptions.data( )
 		};
 
 		VkPipelineInputAssemblyStateCreateInfo InputAssemblyStateInfo =
@@ -1138,6 +1205,61 @@ namespace Brawl
 		return ErrorCode::Okay;
 	}
 
+	ErrorCode Renderer::CreateVertexBuffer( )
+	{
+		VkBufferCreateInfo BufferCreateInfo = { };
+		BufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		BufferCreateInfo.size = sizeof( m_Vertices[ 0 ] ) * m_Vertices.size( );
+		BufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		BufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		if( vkCreateBuffer( m_VulkanDevice, &BufferCreateInfo, Null,
+			&m_VertexBuffer ) != VK_SUCCESS )
+		{
+			std::cout << "[Brawl::Renderer::CreateVertexBuffer] <ERROR> "
+				"Call to vkCreateBuffer failed" << std::endl;
+
+			return ErrorCode::VulkanCreateBufferFailed;
+		}
+
+		VkMemoryRequirements MemoryRequirements;
+		vkGetBufferMemoryRequirements( m_VulkanDevice, m_VertexBuffer,
+			&MemoryRequirements );
+
+		VkMemoryAllocateInfo AllocateInfo = { };
+		AllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		AllocateInfo.allocationSize = MemoryRequirements.size;
+		AllocateInfo.memoryTypeIndex = FindMemoryType(
+			MemoryRequirements.memoryTypeBits,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
+		// memoryTypeIndex should be verified it is valid!!
+
+		if( vkAllocateMemory( m_VulkanDevice, &AllocateInfo, Null,
+			&m_VertexBufferMemory ) != VK_SUCCESS )
+		{
+			std::cout << "[Brawl::Renderer::CreateVertexBuffer] <ERROR> "
+				"Failed to alocate memory" << std::endl;
+
+			return ErrorCode::VulkanAllocateMemoryFailed;
+		}
+
+		vkBindBufferMemory( m_VulkanDevice, m_VertexBuffer,
+			m_VertexBufferMemory, 0 );
+
+		void *pVertexData;
+		vkMapMemory( m_VulkanDevice, m_VertexBufferMemory, 0,
+			BufferCreateInfo.size, 0, &pVertexData );
+
+		memcpy( pVertexData, m_Vertices.data( ),
+			static_cast< size_t >( BufferCreateInfo.size ) );
+
+		vkUnmapMemory( m_VulkanDevice, m_VertexBufferMemory );
+
+
+		return ErrorCode::Okay;
+	}
+
 	uint32_t Renderer::GetSwapchainImageCount(
 		VkSurfaceCapabilitiesKHR &p_SurfaceCapabilities )
 	{
@@ -1252,6 +1374,34 @@ namespace Brawl
 			"No suitable present modes available" << std::endl;
 
 		return static_cast< VkPresentModeKHR >( -1 );
+	}
+
+	uint32_t Renderer::FindMemoryType( uint32_t p_TypeFilter,
+			VkMemoryPropertyFlags p_Properties )
+	{
+		VkPhysicalDeviceMemoryProperties MemoryProperties;
+		vkGetPhysicalDeviceMemoryProperties( m_VulkanPhysicalDevice, 
+			&MemoryProperties );
+
+		std::cout << "[Brawl::Renderer::FindMemoryType] <INFO> "
+			"Found " << MemoryProperties.memoryTypeCount << " memory type(s)"
+			<< std::endl;
+
+		for( uint32_t Index = 0; Index < MemoryProperties.memoryTypeCount;
+			++Index )
+		{
+			if( ( p_TypeFilter & ( 1 << Index ) ) &&
+				( MemoryProperties.memoryTypes[ Index ].propertyFlags &
+					p_Properties ) == p_Properties )
+			{
+				return Index;
+			}
+		}
+
+		std::cout << "[Brawl::Renderer::FindMemoryType] <ERROR> "
+			"Unable to find a suitable memory type" << std::endl;
+
+		return std::numeric_limits< uint32_t >::max( );
 	}
 
 	Bool Renderer::CheckExtensionAvailability( const char *p_pExtensionName,
@@ -1658,7 +1808,8 @@ namespace Brawl
 				return ErrorCode::VulkanBeginCommandBufferFailed;
 			}
 
-			VkClearValue ClearColour = { 0.0f, 1.0f, 0.0f, 1.0f };
+			VkClearValue ClearColour =
+				{ 0.0f, 17.0f / 255.0f, 43.0f / 255.0f, 1.0f };
 
 			VkRenderPassBeginInfo RenderPassBeginInfo =
 			{
@@ -1680,7 +1831,13 @@ namespace Brawl
 			vkCmdBindPipeline( m_CommandBuffers[ Buffer ],
 				VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline );
 
-			vkCmdDraw( m_CommandBuffers[ Buffer ], 3, 1, 0, 0 );
+			VkBuffer VertexBuffers[ ] = { m_VertexBuffer };
+			VkDeviceSize Offsets[ ] = { 0 };
+			vkCmdBindVertexBuffers( m_CommandBuffers[ Buffer ], 0, 1,
+				VertexBuffers, Offsets );
+
+			vkCmdDraw( m_CommandBuffers[ Buffer ],
+				static_cast< uint32_t >( m_Vertices.size( ) ), 1, 0, 0 );
 
 			vkCmdEndRenderPass( m_CommandBuffers[ Buffer ] );
 
