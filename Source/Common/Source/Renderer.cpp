@@ -3,6 +3,7 @@
 #include <VulkanFunctions.hpp>
 #include <File.hpp>
 #include <FileSystem.hpp>
+#include <Arithmetic.hpp>
 
 #if defined( VK_USE_PLATFORM_XCB_KHR )
 #include <GameWindowXCB.hpp>
@@ -11,6 +12,7 @@
 #include <iostream>
 #include <cstring>
 #include <limits>
+#include <chrono>
 
 namespace Brawl
 {
@@ -75,17 +77,21 @@ namespace Brawl
 		m_PresentationSurface( VK_NULL_HANDLE ),
 		m_Swapchain( VK_NULL_HANDLE ),
 		m_SwapchainExtent( { 0, 0 } ),
+		m_DescriptorSetLayout( VK_NULL_HANDLE ),
 		m_PipelineLayout( VK_NULL_HANDLE ),
 		m_GraphicsPipeline( VK_NULL_HANDLE ),
 		m_RenderPass( VK_NULL_HANDLE ),
 		m_CommandPool( VK_NULL_HANDLE ),
+		m_DescriptorPool( VK_NULL_HANDLE ),
 		m_CurrentFrame( 0 ),
 		m_CanRender( False ),
 		m_Resize( False ),
 		m_VertexBuffer( VK_NULL_HANDLE ),
 		m_VertexBufferMemory( VK_NULL_HANDLE ),
 		m_IndexBuffer( VK_NULL_HANDLE ),
-		m_IndexBufferMemory( VK_NULL_HANDLE )
+		m_IndexBufferMemory( VK_NULL_HANDLE ),
+		m_UniformBuffers( VK_NULL_HANDLE ),
+		m_UniformBuffersMemory( VK_NULL_HANDLE )
 	{
 		Vertex NewVertex;
 
@@ -126,32 +132,32 @@ namespace Brawl
 
 	Renderer::~Renderer( )
 	{
-		this->Terminate( );
+		Terminate( );
 	}
 
 	ErrorCode Renderer::Initialise( GameWindow *p_pGameWindow )
 	{
-		if( this->LoadVulkanLibrary( ) != ErrorCode::Okay )
+		if( LoadVulkanLibrary( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::LoadVulkanLibraryFailed;
 		}
 
-		if( this->LoadExportedEntryPoints( ) != ErrorCode::Okay )
+		if( LoadExportedEntryPoints( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::LoadVulkanEntryPointsFailed;
 		}
 
-		if( this->LoadGlobalLevelEntryPoints( ) != ErrorCode::Okay )
+		if( LoadGlobalLevelEntryPoints( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::LoadVulkanGlobalLevelEntryPointsFailed;
 		}
 
-		if( this->CreateVulkanInstance( ) != ErrorCode::Okay )
+		if( CreateVulkanInstance( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanInstanceFailed;
 		}
 
-		if( this->LoadInstanceLevelEntryPoints( ) != ErrorCode::Okay )
+		if( LoadInstanceLevelEntryPoints( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::LoadVulkanInstanceLevelEntryPointsFailed;
 		}
@@ -159,72 +165,78 @@ namespace Brawl
 		//m_pGameWindowData = p_pGameWindow->GetGameWindowData( );
 		m_pGameWindow = p_pGameWindow;
 
-		if( this->CreatePresentationSurface( ) != ErrorCode::Okay )
+		if( CreatePresentationSurface( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanPresentationSurfaceFailed;
 		}
 
-		if( this->CreateVulkanDevice( ) != ErrorCode::Okay )
+		if( CreateVulkanDevice( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanDeviceFailed;
 		}
 
-		if( this->LoadDeviceLevelEntryPoints( ) != ErrorCode::Okay )
+		if( LoadDeviceLevelEntryPoints( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::LoadVulkanDeviceLevelEntryPointsFailed;
 		}
 
-		if( this->GetDeviceQueues( ) != ErrorCode::Okay )
+		if( GetDeviceQueues( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::GetVulkanDeviceQueuesFailed;
 		}
 
-		if( this->CreateSwapchain( ) != ErrorCode::Okay )
+		if( CreateSwapchain( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanSwapchainFailed;
 		}
 
-		if( this->CreateSwapchainImageViews( ) != ErrorCode::Okay )
+		if( CreateSwapchainImageViews( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanImageViewFailed;
 		}
 
-		if( this->CreateRenderPass( ) != ErrorCode::Okay )
+		if( CreateRenderPass( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanRenderPassFailed;
 		}
 
-		if( this->CreateGraphicsPipeline( ) != ErrorCode::Okay )
+		CreateDescriptorSetLayout( );
+
+		if( CreateGraphicsPipeline( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanGraphicsPipelineFailed;
 		}
 
-		if( this->CreateFramebuffers( ) != ErrorCode::Okay )
+		if( CreateFramebuffers( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanFramebuffersFailed;
 		}
 
-		if( this->CreateCommandPool( ) != ErrorCode::Okay )
+		if( CreateCommandPool( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanCommandPoolFailed;
 		}
 
-		if( this->CreateVertexBuffer( ) != ErrorCode::Okay )
+		if( CreateVertexBuffer( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanVertexBufferFailed;
 		}
 
-		if( this->CreateIndexBuffer( ) != ErrorCode::Okay )
+		if( CreateIndexBuffer( ) != ErrorCode::Okay )
 		{
-			return ErrorCode::CreateBVulkanIndexBufferFailed;
+			return ErrorCode::CreateVulkanIndexBufferFailed;
 		}
 
-		if( this->CreateCommandBuffers( ) != ErrorCode::Okay )
+		CreateUniformBuffers( );
+		CreateDescriptorPool( );
+		CreateDescriptorSets( );
+
+		if( CreateCommandBuffers( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanCommandBuffersFailed;
 		}
 
-		if( this->CreateSemaphores( ) != ErrorCode::Okay )
+		if( CreateSemaphores( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanSemaporesFailed;
 		}
@@ -237,7 +249,10 @@ namespace Brawl
 	void Renderer::Terminate( )
 	{
 		vkDeviceWaitIdle( m_VulkanDevice );
-		this->CleanupSwapchain( );
+		CleanupSwapchain( );
+
+		vkDestroyDescriptorSetLayout( m_VulkanDevice, m_DescriptorSetLayout,
+			Null );
 
 		vkDestroyBuffer( m_VulkanDevice, m_IndexBuffer, Null );
 		vkFreeMemory( m_VulkanDevice, m_IndexBufferMemory, Null );
@@ -439,7 +454,7 @@ namespace Brawl
 
 		for( const auto &Extension : Extensions )
 		{
-			if( this->CheckExtensionAvailability( Extension,
+			if( CheckExtensionAvailability( Extension,
 				AvailableExtensions ) == False )
 			{
 				std::cout << "[Brawl::Renderer::CreateVulkanInstance] <ERROR> "
@@ -586,7 +601,7 @@ namespace Brawl
 
 		for( const auto &PhysicalDevice : PhysicalDevices )
 		{
-			if( this->CheckPhysicalDeviceProperties( PhysicalDevice,
+			if( CheckPhysicalDeviceProperties( PhysicalDevice,
 				GraphicsQueueFamilyIndex, PresentQueueFamilyIndex ) == True )
 			{
 				m_VulkanPhysicalDevice = PhysicalDevice;
@@ -801,6 +816,15 @@ namespace Brawl
 
 		vkDestroySwapchainKHR( m_VulkanDevice, m_Swapchain, Null );
 
+		for( size_t Image = 0; Image < m_SwapchainImages.size( ); ++Image )
+		{
+			vkDestroyBuffer( m_VulkanDevice, m_UniformBuffers[ Image ], Null );
+			vkFreeMemory( m_VulkanDevice, m_UniformBuffersMemory[ Image ],
+				Null );
+		}
+
+		vkDestroyDescriptorPool( m_VulkanDevice, m_DescriptorPool, Null );
+
 		return ErrorCode::Okay;
 	}
 
@@ -808,14 +832,17 @@ namespace Brawl
 	{
 		vkDeviceWaitIdle( m_VulkanDevice );
 
-		this->CleanupSwapchain( );
+		CleanupSwapchain( );
 
-		this->CreateSwapchain( );
-		this->CreateSwapchainImageViews( );
-		this->CreateRenderPass( );
-		this->CreateGraphicsPipeline( );
-		this->CreateFramebuffers( );
-		this->CreateCommandBuffers( );
+		CreateSwapchain( );
+		CreateSwapchainImageViews( );
+		CreateRenderPass( );
+		CreateGraphicsPipeline( );
+		CreateFramebuffers( );
+		CreateUniformBuffers( );
+		CreateDescriptorPool( );
+		CreateDescriptorSets( );
+		CreateCommandBuffers( );
 
 		return ErrorCode::Okay;
 	}
@@ -1074,7 +1101,7 @@ namespace Brawl
 			VK_FALSE,
 			VK_FALSE,
 			VK_POLYGON_MODE_FILL,
-			VK_CULL_MODE_BACK_BIT,
+			VK_CULL_MODE_NONE,
 			VK_FRONT_FACE_CLOCKWISE,
 			VK_FALSE,
 			0.0f,
@@ -1131,8 +1158,8 @@ namespace Brawl
 			VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 			Null,
 			0,
-			0,
-			Null,
+			1,
+			&m_DescriptorSetLayout,
 			0,
 			Null
 		};
@@ -1389,6 +1416,158 @@ namespace Brawl
 		return ErrorCode::Okay;
 	}
 
+	ErrorCode Renderer::CreateDescriptorSetLayout( )
+	{
+		VkDescriptorSetLayoutBinding LayoutBinding = { };
+		LayoutBinding.binding = 0;
+		LayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		LayoutBinding.descriptorCount = 1;
+		LayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		LayoutBinding.pImmutableSamplers = Null;
+
+		VkDescriptorSetLayoutCreateInfo LayoutCreateInfo = { };
+		LayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		LayoutCreateInfo.bindingCount = 1;
+		LayoutCreateInfo.pBindings = &LayoutBinding;
+
+		if( vkCreateDescriptorSetLayout( m_VulkanDevice, &LayoutCreateInfo,
+			Null, &m_DescriptorSetLayout ) != VK_SUCCESS )
+		{
+			std::cout << "[Brawl::Renderer::CreateDescriptorSetLayout] "
+				"<ERROR> Failed to create descriptor set layout" << std::endl;
+
+			return ErrorCode::CreateVulkanDescriptorSetLayoutFailed;
+		}
+
+		return ErrorCode::Okay;
+	}
+
+	ErrorCode Renderer::CreateUniformBuffers( )
+	{
+		VkDeviceSize BufferSize = sizeof( UniformBufferObject );
+
+		m_UniformBuffers.resize( m_SwapchainImages.size( ) );
+		m_UniformBuffersMemory.resize( m_SwapchainImages.size( ) );
+
+		for( size_t Buffer = 0; Buffer < m_SwapchainImages.size( ); ++Buffer )
+		{
+			CreateBuffer( BufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+					VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+				m_UniformBuffers[ Buffer ], m_UniformBuffersMemory[ Buffer ] );
+		}
+
+		return ErrorCode::Okay;
+	}
+
+	ErrorCode Renderer::UpdateUniformBuffer( uint32_t p_CurrentImage )
+	{
+		static auto StartTime = std::chrono::high_resolution_clock::now( );
+
+		auto CurrentTime = std::chrono::high_resolution_clock::now( );
+		float Time =
+			std::chrono::duration< float, std::chrono::seconds::period >(
+				CurrentTime - StartTime ).count( );
+
+		UniformBufferObject UBO = { };
+
+		UBO.Model.Rotate( Time * ToRadians( 90.0f ), Vector4( 0.0f, 1.0f, 0.0f, 0.0f ) );
+		UBO.Projection.CreatePerspectiveFOV( ToRadians( 45.0f ),
+			static_cast< float >( m_SwapchainExtent.width ) / 
+				static_cast< float >( m_SwapchainExtent.height ),
+			0.1f, 10.0f );
+		UBO.View.CreateViewLookAt( Vector4( 2.0f, 2.0f, 2.0f, 1.0f ),
+			Vector4( 0.0f, 0.0f, 0.0f, 1.0f ),
+			Vector4( 0.0f, 1.0f, 0.0f, 1.0f ) );
+
+		void *pUBOData;
+
+		vkMapMemory( m_VulkanDevice, m_UniformBuffersMemory[ p_CurrentImage ],
+			0, sizeof( UBO ), 0, &pUBOData );
+
+		memcpy( pUBOData, &UBO, sizeof( UBO ) );
+
+		vkUnmapMemory( m_VulkanDevice,
+			m_UniformBuffersMemory[ p_CurrentImage ] );
+
+		return ErrorCode::Okay;
+	}
+
+	ErrorCode Renderer::CreateDescriptorPool( )
+	{
+		VkDescriptorPoolSize PoolSize = { };
+		PoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		PoolSize.descriptorCount =
+			static_cast< uint32_t >( m_SwapchainImages.size( ) );
+
+		VkDescriptorPoolCreateInfo DescriptorPoolCreateInfo = { };
+		DescriptorPoolCreateInfo.sType =
+			VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		DescriptorPoolCreateInfo.poolSizeCount = 1;
+		DescriptorPoolCreateInfo.pPoolSizes = &PoolSize;
+		DescriptorPoolCreateInfo.maxSets = static_cast< uint32_t >(
+			m_SwapchainImages.size( ) );
+
+		if( vkCreateDescriptorPool( m_VulkanDevice, &DescriptorPoolCreateInfo,
+			Null, &m_DescriptorPool ) != VK_SUCCESS )
+		{
+			std::cout << "[Brawl::Renderer::CreateDescriptorPool] <ERROR> "
+				"Failed to create a descriptor pool" << std::endl;
+
+			return ErrorCode::FatalError;
+		}
+
+		return ErrorCode::Okay;
+	}
+
+	ErrorCode Renderer::CreateDescriptorSets( )
+	{
+		std::vector< VkDescriptorSetLayout > Layouts(
+			m_SwapchainImages.size( ), m_DescriptorSetLayout );
+
+		VkDescriptorSetAllocateInfo AllocateInfo = { };
+		AllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		AllocateInfo.descriptorPool = m_DescriptorPool;
+		AllocateInfo.descriptorSetCount = static_cast< uint32_t >(
+			m_SwapchainImages.size( ) );
+		AllocateInfo.pSetLayouts = Layouts.data( );
+
+		m_DescriptorSets.resize( m_SwapchainImages.size( ) );
+
+		if( vkAllocateDescriptorSets( m_VulkanDevice, &AllocateInfo,
+			m_DescriptorSets.data( ) ) != VK_SUCCESS )
+		{
+			std::cout << "[Brawl::Renderer::CreateDescriptorSets] <ERROR> "
+				"Failed to allocate descriptor sets" << std::endl;
+
+			return ErrorCode::FatalError;
+		}
+
+		for( uint32_t Image = 0; Image < m_SwapchainImages.size( ); ++Image )
+		{
+			VkDescriptorBufferInfo BufferInfo = { };
+			BufferInfo.buffer = m_UniformBuffers[ Image ];
+			BufferInfo.offset = 0;
+			BufferInfo.range = sizeof( UniformBufferObject );
+
+			VkWriteDescriptorSet WriteDescriptor = { };
+			WriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			WriteDescriptor.dstSet = m_DescriptorSets[ Image ];
+			WriteDescriptor.dstBinding = 0;
+			WriteDescriptor.dstArrayElement = 0;
+			WriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			WriteDescriptor.descriptorCount = 1;
+			WriteDescriptor.pBufferInfo = &BufferInfo;
+			WriteDescriptor.pImageInfo = Null;
+			WriteDescriptor.pTexelBufferView = Null;
+
+			vkUpdateDescriptorSets( m_VulkanDevice, 1, &WriteDescriptor, 0,
+				Null );
+		}
+
+		return ErrorCode::Okay;
+	}
+
 	uint32_t Renderer::GetSwapchainImageCount(
 		VkSurfaceCapabilitiesKHR &p_SurfaceCapabilities )
 	{
@@ -1586,7 +1765,7 @@ namespace Brawl
 
 		for( const auto &Extension : DeviceExtensions )
 		{
-			if( this->CheckExtensionAvailability( Extension,
+			if( CheckExtensionAvailability( Extension,
 				AvailableExtensions ) == False )
 			{
 				std::cout << "[Brawl::Renderer::CheckPhysicalDeviceProperties]"
@@ -1800,17 +1979,17 @@ namespace Brawl
 		}
 
 		uint32_t ImageCount =
-			this->GetSwapchainImageCount( SurfaceCapabilities );
+			GetSwapchainImageCount( SurfaceCapabilities );
 		VkSurfaceFormatKHR SurfaceFormat =
-			this->GetSwapchainFormat( SurfaceFormats );
+			GetSwapchainFormat( SurfaceFormats );
 		VkExtent2D SurfaceExtent =
-			this->GetSwapchainExtent( SurfaceCapabilities );
+			GetSwapchainExtent( SurfaceCapabilities );
 		VkImageUsageFlags ImageUsageFlags =
-			this->GetSwapchainUsageFlags( SurfaceCapabilities );
+			GetSwapchainUsageFlags( SurfaceCapabilities );
 		VkSurfaceTransformFlagBitsKHR TransformFlagBits =
-			this->GetSwapchainTransformFlagBits( SurfaceCapabilities );
+			GetSwapchainTransformFlagBits( SurfaceCapabilities );
 		VkPresentModeKHR PresentMode =
-			this->GetSwapchainPresentMode( PresentModes );
+			GetSwapchainPresentMode( PresentModes );
 
 		if( static_cast< int32_t >( ImageUsageFlags ) == -1 )
 		{
@@ -1966,6 +2145,9 @@ namespace Brawl
 				VertexBuffers, Offsets );
 			vkCmdBindIndexBuffer( m_CommandBuffers[ Buffer ], m_IndexBuffer, 0,
 				VK_INDEX_TYPE_UINT16 );
+			vkCmdBindDescriptorSets( m_CommandBuffers[ Buffer ],
+				VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0, 1,
+				&m_DescriptorSets[ Buffer ], 0, Null );
 
 			/*vkCmdDraw( m_CommandBuffers[ Buffer ],
 				static_cast< uint32_t >( m_Vertices.size( ) ), 1, 0, 0 );*/
@@ -2039,6 +2221,8 @@ namespace Brawl
 			{ VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 		VkSemaphore SignalSemaphores[ ] =
 			{ m_RenderingFinishedSemaphores[ m_CurrentFrame ] };
+
+		UpdateUniformBuffer( ImageIndex );
 
 		VkSubmitInfo SubmitInfo =
 		{

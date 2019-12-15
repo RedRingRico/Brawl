@@ -5,6 +5,8 @@
 
 namespace Brawl
 {
+	class Matrix4x4;
+
 	class Vector4
 	{
 	public:

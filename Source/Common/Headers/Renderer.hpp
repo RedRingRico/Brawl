@@ -2,6 +2,7 @@
 #define __BRAWL_RENDERER_HPP__
 
 #include <DataTypes.hpp>
+#include <Matrix4x4.hpp>
 #include <vulkan/vulkan.h>
 
 #include <vector>
@@ -11,6 +12,13 @@ namespace Brawl
 {
 	class GameWindow;
 	class GameWindowData;
+
+	struct UniformBufferObject
+	{
+		Matrix4x4	Model;
+		Matrix4x4	View;
+		Matrix4x4	Projection;
+	};
 
 	struct Vertex
 	{
@@ -71,6 +79,11 @@ namespace Brawl
 			VkBuffer &p_Buffer, VkDeviceMemory &p_BufferMemory );
 		ErrorCode CopyBuffer( VkBuffer p_Source, VkBuffer p_Destination,
 			VkDeviceSize p_Size );
+		ErrorCode CreateDescriptorSetLayout( );
+		ErrorCode CreateUniformBuffers( );
+		ErrorCode UpdateUniformBuffer( uint32_t p_CurrentImage );
+		ErrorCode CreateDescriptorPool( );
+		ErrorCode CreateDescriptorSets( );
 
 		uint32_t GetSwapchainImageCount(
 			VkSurfaceCapabilitiesKHR &p_SurfaceCapabilities );
@@ -117,10 +130,13 @@ namespace Brawl
 		std::vector< VkImageView >		m_SwapchainImageViews;
 		VkFormat						m_SwapchainImageFormat;
 		std::vector< VkFramebuffer >	m_SwapchainFramebuffers;
+		VkDescriptorSetLayout			m_DescriptorSetLayout;
 		VkPipelineLayout				m_PipelineLayout;
 		VkPipeline						m_GraphicsPipeline;
 		VkRenderPass					m_RenderPass;
 		VkCommandPool					m_CommandPool;
+		VkDescriptorPool				m_DescriptorPool;
+		std::vector< VkDescriptorSet >	m_DescriptorSets;
 		std::vector< VkCommandBuffer >	m_CommandBuffers;
 		size_t							m_CurrentFrame;
 
@@ -134,6 +150,8 @@ namespace Brawl
 		VkDeviceMemory					m_VertexBufferMemory;
 		VkBuffer						m_IndexBuffer;
 		VkDeviceMemory					m_IndexBufferMemory;
+		std::vector< VkBuffer > 		m_UniformBuffers;
+		std::vector< VkDeviceMemory >	m_UniformBuffersMemory;
 	};
 }
 
