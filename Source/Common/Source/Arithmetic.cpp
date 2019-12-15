@@ -33,4 +33,9 @@ namespace Brawl
 		p_Sine = sinf( p_Angle );
 		p_Cosine = cosf( p_Angle );
 	}
+
+	Float32 ToRadians( Float32 p_Value )
+	{
+		return ( p_Value * kPi ) / 180.0f;
+	}
 }

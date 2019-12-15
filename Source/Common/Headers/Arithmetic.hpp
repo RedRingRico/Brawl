@@ -17,6 +17,8 @@ namespace Brawl
 	Float32 Absolute( Float32 p_Value );
 
 	void SineCosine( Float32 p_Angle, Float32 &p_Sine, Float32 &p_Cosine );
+
+	Float32 ToRadians( Float32 p_Value );
 }
 
 #endif // __BRAWL_ARITHMETIC_HPP__
