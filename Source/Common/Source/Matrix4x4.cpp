@@ -131,7 +131,6 @@ namespace Brawl
 		m_M32 = -( p_FarPlane * p_NearPlane ) / ( p_FarPlane - p_NearPlane );
 		m_M33 = 0.0f;
 
-
 		return *this;
 	}
 

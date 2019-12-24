@@ -60,6 +60,13 @@ namespace Brawl
 		CreateVulkanVertexBufferFailed,
 		CreateVulkanIndexBufferFailed,
 		CreateVulkanDescriptorSetLayoutFailed,
+		CreateTextureImageFailed,
+		CreateTextureImageViewFailed,
+		CreateTextureSamplerFailed,
+		TextureFileInvalid,
+		VulkanCreateImageFailed,
+		VulkanLayoutTransitionUnsupported,
+		VulkanCreateTextureSamplerFailed,
 
 		// System
 		CloseLibraryFailed = -1000,

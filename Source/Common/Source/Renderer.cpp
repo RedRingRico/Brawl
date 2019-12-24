@@ -14,6 +14,9 @@
 #include <limits>
 #include <chrono>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
+
 namespace Brawl
 {
 	VkVertexInputBindingDescription Vertex::GetBindingDescription( )
@@ -26,10 +29,10 @@ namespace Brawl
 		return BindingDescription;
 	}
 
-	std::array< VkVertexInputAttributeDescription, 2 >
+	std::array< VkVertexInputAttributeDescription, 3 >
 		Vertex::GetAttributeDescriptions( )
 	{
-		std::array< VkVertexInputAttributeDescription, 2 >
+		std::array< VkVertexInputAttributeDescription, 3 >
 			AttributeDescriptions = { };
 
 		AttributeDescriptions[ 0 ].binding = 0;
@@ -41,6 +44,11 @@ namespace Brawl
 		AttributeDescriptions[ 1 ].location = 1;
 		AttributeDescriptions[ 1 ].format = VK_FORMAT_R32G32B32_SFLOAT;
 		AttributeDescriptions[ 1 ].offset = offsetof( Vertex, Colour );
+
+		AttributeDescriptions[ 2 ].binding = 0;
+		AttributeDescriptions[ 2 ].location = 2;
+		AttributeDescriptions[ 2 ].format = VK_FORMAT_R32G32_SFLOAT;
+		AttributeDescriptions[ 2 ].offset = offsetof( Vertex, UV );
 
 		return AttributeDescriptions;
 	}
@@ -90,6 +98,10 @@ namespace Brawl
 		m_VertexBufferMemory( VK_NULL_HANDLE ),
 		m_IndexBuffer( VK_NULL_HANDLE ),
 		m_IndexBufferMemory( VK_NULL_HANDLE ),
+		m_TextureImage( VK_NULL_HANDLE ),
+		m_TextureImageMemory( VK_NULL_HANDLE ),
+		m_TextureImageView( VK_NULL_HANDLE ),
+		m_TextureSampler( VK_NULL_HANDLE ),
 		m_UniformBuffers( VK_NULL_HANDLE ),
 		m_UniformBuffersMemory( VK_NULL_HANDLE )
 	{
@@ -100,6 +112,8 @@ namespace Brawl
 		NewVertex.Colour[ 0 ] = 1.0f;
 		NewVertex.Colour[ 1 ] = 0.0f;
 		NewVertex.Colour[ 2 ] = 0.0f;
+		NewVertex.UV[ 0 ] = 1.0f;
+		NewVertex.UV[ 1 ] = 1.0f;
 
 		m_Vertices.push_back( NewVertex );
 
@@ -108,6 +122,8 @@ namespace Brawl
 		NewVertex.Colour[ 0 ] = 0.0f;
 		NewVertex.Colour[ 1 ] = 1.0f;
 		NewVertex.Colour[ 2 ] = 0.0f;
+		NewVertex.UV[ 0 ] = 0.0f;
+		NewVertex.UV[ 1 ] = 1.0f;
 
 		m_Vertices.push_back( NewVertex );
 
@@ -116,6 +132,8 @@ namespace Brawl
 		NewVertex.Colour[ 0 ] = 0.0f;
 		NewVertex.Colour[ 1 ] = 0.0f;
 		NewVertex.Colour[ 2 ] = 1.0f;
+		NewVertex.UV[ 0 ] = 0.0f;
+		NewVertex.UV[ 1 ] = 0.0f;
 
 		m_Vertices.push_back( NewVertex );
 
@@ -124,6 +142,8 @@ namespace Brawl
 		NewVertex.Colour[ 0 ] = 1.0f;
 		NewVertex.Colour[ 1 ] = 1.0f;
 		NewVertex.Colour[ 2 ] = 1.0f;
+		NewVertex.UV[ 0 ] = 1.0f;
+		NewVertex.UV[ 1 ] = 0.0f;
 
 		m_Vertices.push_back( NewVertex );
 
@@ -162,7 +182,6 @@ namespace Brawl
 			return ErrorCode::LoadVulkanInstanceLevelEntryPointsFailed;
 		}
 
-		//m_pGameWindowData = p_pGameWindow->GetGameWindowData( );
 		m_pGameWindow = p_pGameWindow;
 
 		if( CreatePresentationSurface( ) != ErrorCode::Okay )
@@ -217,6 +236,21 @@ namespace Brawl
 			return ErrorCode::CreateVulkanCommandPoolFailed;
 		}
 
+		if( CreateTextureImage( ) != ErrorCode::Okay )
+		{
+			return ErrorCode::CreateTextureImageFailed;
+		}
+
+		if( CreateTextureImageView( ) != ErrorCode::Okay )
+		{
+			return ErrorCode::CreateTextureImageViewFailed;
+		}
+
+		if( CreateTextureSampler( ) != ErrorCode::Okay )
+		{
+			return ErrorCode::CreateTextureSamplerFailed;
+		}
+
 		if( CreateVertexBuffer( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanVertexBufferFailed;
@@ -250,6 +284,11 @@ namespace Brawl
 	{
 		vkDeviceWaitIdle( m_VulkanDevice );
 		CleanupSwapchain( );
+
+		vkDestroySampler( m_VulkanDevice, m_TextureSampler, Null );
+		vkDestroyImageView( m_VulkanDevice, m_TextureImageView, Null );
+		vkDestroyImage( m_VulkanDevice, m_TextureImage, Null );
+		vkFreeMemory( m_VulkanDevice, m_TextureImageMemory, Null );
 
 		vkDestroyDescriptorSetLayout( m_VulkanDevice, m_DescriptorSetLayout,
 			Null );
@@ -655,6 +694,9 @@ namespace Brawl
 			VK_KHR_SWAPCHAIN_EXTENSION_NAME
 		};
 
+		VkPhysicalDeviceFeatures DeviceFeatures = { };
+		DeviceFeatures.samplerAnisotropy = VK_TRUE;
+
 		VkDeviceCreateInfo DeviceCreateInfo =
 		{
 			VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -666,7 +708,7 @@ namespace Brawl
 			Null,
 			static_cast< uint32_t >( DeviceExtensions.size( ) ),
 			DeviceExtensions.data( ),
-			Null
+			&DeviceFeatures
 		};
 
 		if( vkCreateDevice( m_VulkanPhysicalDevice, &DeviceCreateInfo, Null,
@@ -1102,7 +1144,7 @@ namespace Brawl
 			VK_FALSE,
 			VK_POLYGON_MODE_FILL,
 			VK_CULL_MODE_NONE,
-			VK_FRONT_FACE_CLOCKWISE,
+			VK_FRONT_FACE_COUNTER_CLOCKWISE,
 			VK_FALSE,
 			0.0f,
 			0.0f,
@@ -1376,21 +1418,8 @@ namespace Brawl
 	ErrorCode Renderer::CopyBuffer( VkBuffer p_Source, VkBuffer p_Destination,
 			VkDeviceSize p_Size )
 	{
-		VkCommandBufferAllocateInfo AllocateInfo = { };
-		AllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		AllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		AllocateInfo.commandPool = m_CommandPool;
-		AllocateInfo.commandBufferCount = 1;
 
-		VkCommandBuffer CommandBuffer;
-		vkAllocateCommandBuffers( m_VulkanDevice, &AllocateInfo,
-			&CommandBuffer );
-
-		VkCommandBufferBeginInfo BeginInfo = { };
-		BeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		BeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-		vkBeginCommandBuffer( CommandBuffer, &BeginInfo );
+		VkCommandBuffer CommandBuffer = BeginSingleTimeCommands( );
 
 		VkBufferCopy CopyRegion = { };
 		CopyRegion.srcOffset = 0;
@@ -1400,35 +1429,41 @@ namespace Brawl
 		vkCmdCopyBuffer( CommandBuffer, p_Source, p_Destination, 1,
 			&CopyRegion );
 
-		vkEndCommandBuffer( CommandBuffer );
-
-		VkSubmitInfo SubmitInfo = { };
-		SubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		SubmitInfo.commandBufferCount = 1;
-		SubmitInfo.pCommandBuffers = &CommandBuffer;
-
-		vkQueueSubmit( m_GraphicsQueue, 1, &SubmitInfo, VK_NULL_HANDLE );
-		vkQueueWaitIdle( m_GraphicsQueue );
-
-		vkFreeCommandBuffers( m_VulkanDevice, m_CommandPool, 1,
-			&CommandBuffer );
+		EndSingleTimeCommands( CommandBuffer );
 
 		return ErrorCode::Okay;
 	}
 
 	ErrorCode Renderer::CreateDescriptorSetLayout( )
 	{
-		VkDescriptorSetLayoutBinding LayoutBinding = { };
-		LayoutBinding.binding = 0;
-		LayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		LayoutBinding.descriptorCount = 1;
-		LayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-		LayoutBinding.pImmutableSamplers = Null;
+		VkDescriptorSetLayoutBinding UniformLayoutBinding = { };
+		UniformLayoutBinding.binding = 0;
+		UniformLayoutBinding.descriptorCount = 1;
+		UniformLayoutBinding.descriptorType =
+			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		UniformLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		UniformLayoutBinding.pImmutableSamplers = Null;
+
+		VkDescriptorSetLayoutBinding SamplerLayoutBinding = { };
+		SamplerLayoutBinding.binding = 1;
+		SamplerLayoutBinding.descriptorCount = 1;
+		SamplerLayoutBinding.descriptorType =
+			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		SamplerLayoutBinding.pImmutableSamplers = Null;
+		SamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+		std::array< VkDescriptorSetLayoutBinding, 2 > Bindings =
+		{
+			UniformLayoutBinding,
+			SamplerLayoutBinding
+		};
 
 		VkDescriptorSetLayoutCreateInfo LayoutCreateInfo = { };
-		LayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		LayoutCreateInfo.bindingCount = 1;
-		LayoutCreateInfo.pBindings = &LayoutBinding;
+		LayoutCreateInfo.sType =
+			VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		LayoutCreateInfo.bindingCount =
+			static_cast< uint32_t >( Bindings.size( ) );
+		LayoutCreateInfo.pBindings = Bindings.data( );
 
 		if( vkCreateDescriptorSetLayout( m_VulkanDevice, &LayoutCreateInfo,
 			Null, &m_DescriptorSetLayout ) != VK_SUCCESS )
@@ -1438,6 +1473,8 @@ namespace Brawl
 
 			return ErrorCode::CreateVulkanDescriptorSetLayoutFailed;
 		}
+
+
 
 		return ErrorCode::Okay;
 	}
@@ -1495,16 +1532,20 @@ namespace Brawl
 
 	ErrorCode Renderer::CreateDescriptorPool( )
 	{
-		VkDescriptorPoolSize PoolSize = { };
-		PoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		PoolSize.descriptorCount =
+		std::array< VkDescriptorPoolSize, 2 > PoolSizes = { };
+		PoolSizes[ 0 ].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		PoolSizes[ 0 ].descriptorCount =
+			static_cast< uint32_t >( m_SwapchainImages.size( ) );
+		PoolSizes[ 1 ].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		PoolSizes[ 1 ].descriptorCount =
 			static_cast< uint32_t >( m_SwapchainImages.size( ) );
 
 		VkDescriptorPoolCreateInfo DescriptorPoolCreateInfo = { };
 		DescriptorPoolCreateInfo.sType =
 			VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		DescriptorPoolCreateInfo.poolSizeCount = 1;
-		DescriptorPoolCreateInfo.pPoolSizes = &PoolSize;
+		DescriptorPoolCreateInfo.poolSizeCount =
+			static_cast< uint32_t >( PoolSizes.size( ) );
+		DescriptorPoolCreateInfo.pPoolSizes = PoolSizes.data( );
 		DescriptorPoolCreateInfo.maxSets = static_cast< uint32_t >(
 			m_SwapchainImages.size( ) );
 
@@ -1550,20 +1591,279 @@ namespace Brawl
 			BufferInfo.offset = 0;
 			BufferInfo.range = sizeof( UniformBufferObject );
 
-			VkWriteDescriptorSet WriteDescriptor = { };
-			WriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			WriteDescriptor.dstSet = m_DescriptorSets[ Image ];
-			WriteDescriptor.dstBinding = 0;
-			WriteDescriptor.dstArrayElement = 0;
-			WriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			WriteDescriptor.descriptorCount = 1;
-			WriteDescriptor.pBufferInfo = &BufferInfo;
-			WriteDescriptor.pImageInfo = Null;
-			WriteDescriptor.pTexelBufferView = Null;
+			VkDescriptorImageInfo ImageInfo = { };
+			ImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			ImageInfo.imageView = m_TextureImageView;
+			ImageInfo.sampler = m_TextureSampler;
 
-			vkUpdateDescriptorSets( m_VulkanDevice, 1, &WriteDescriptor, 0,
-				Null );
+			std::array< VkWriteDescriptorSet, 2 > WriteDescriptors = { };
+
+			WriteDescriptors[ 0 ].sType =
+				VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			WriteDescriptors[ 0 ].dstSet = m_DescriptorSets[ Image ];
+			WriteDescriptors[ 0 ].dstBinding = 0;
+			WriteDescriptors[ 0 ].dstArrayElement = 0;
+			WriteDescriptors[ 0 ].descriptorType =
+				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			WriteDescriptors[ 0 ].descriptorCount = 1;
+			WriteDescriptors[ 0 ].pBufferInfo = &BufferInfo;
+			WriteDescriptors[ 0 ].pImageInfo = Null;
+			WriteDescriptors[ 0 ].pTexelBufferView = Null;
+
+			WriteDescriptors[ 1 ].sType =
+				VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			WriteDescriptors[ 1 ].dstSet = m_DescriptorSets[ Image ];
+			WriteDescriptors[ 1 ].dstBinding = 1;
+			WriteDescriptors[ 1 ].dstArrayElement = 0;
+			WriteDescriptors[ 1 ].descriptorType =
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			WriteDescriptors[ 1 ].descriptorCount = 1;
+			WriteDescriptors[ 1 ].pBufferInfo = Null;
+			WriteDescriptors[ 1 ].pImageInfo = &ImageInfo;
+			WriteDescriptors[ 1 ].pTexelBufferView = Null;
+
+			vkUpdateDescriptorSets( m_VulkanDevice,
+				static_cast< uint32_t >( WriteDescriptors.size( ) ),
+				WriteDescriptors.data( ), 0, Null );
 		}
+
+		return ErrorCode::Okay;
+	}
+
+	ErrorCode Renderer::CreateTextureImage( )
+	{
+		SInt32 Width, Height, ChannelCount;
+
+		stbi_uc *pPixels = stbi_load( "Data/Textures/512.png", &Width, &Height,
+			&ChannelCount, STBI_rgb_alpha );
+
+		if( pPixels == Null )
+		{
+			std::cout << "[Brawl::Renderer::CreateTextureImage] <ERROR> "
+				"Failed to open texture image: Data/Textures/512.png"
+				<< std::endl;
+
+			return ErrorCode::TextureFileInvalid;
+		}
+
+		VkDeviceSize TextureSize = Width * Height * 4;
+
+		VkBuffer StagingBuffer;
+		VkDeviceMemory StagingBufferMemory;
+
+		CreateBuffer( TextureSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, StagingBuffer,
+			StagingBufferMemory );
+
+		void *pData;
+		vkMapMemory( m_VulkanDevice, StagingBufferMemory, 0, TextureSize, 0,
+			&pData );
+		memcpy( pData, pPixels, static_cast< size_t >( TextureSize ) );
+		vkUnmapMemory( m_VulkanDevice, StagingBufferMemory );
+
+		stbi_image_free( pPixels );
+
+		VkImageCreateInfo ImageInfo = { };
+		ImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		ImageInfo.imageType = VK_IMAGE_TYPE_2D;
+		ImageInfo.extent.width = static_cast< uint32_t >( Width );
+		ImageInfo.extent.height = static_cast< uint32_t >( Height );
+		ImageInfo.extent.depth = 1;
+		ImageInfo.mipLevels = 1;
+		ImageInfo.arrayLayers = 1;
+		ImageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+		ImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+		ImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		ImageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+			VK_IMAGE_USAGE_SAMPLED_BIT;
+		ImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		ImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		ImageInfo.flags = 0;
+
+		if( vkCreateImage( m_VulkanDevice, &ImageInfo, Null, &m_TextureImage )
+			!= VK_SUCCESS )
+		{
+			std::cout << "[Brawl::Renderer::CreateTextureImage] <ERROR> "
+				"Failed to create iamge: Data/Textures/512.png"
+				<< std::endl;
+
+			return ErrorCode::VulkanCreateImageFailed;
+		}
+
+		VkMemoryRequirements MemoryRequirements;
+		vkGetImageMemoryRequirements( m_VulkanDevice, m_TextureImage,
+			&MemoryRequirements );
+
+		VkMemoryAllocateInfo AllocateInfo = { };
+		AllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		AllocateInfo.allocationSize = MemoryRequirements.size;
+		AllocateInfo.memoryTypeIndex = FindMemoryType(
+			MemoryRequirements.memoryTypeBits,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
+
+		if( vkAllocateMemory( m_VulkanDevice, &AllocateInfo, Null,
+			&m_TextureImageMemory ) != VK_SUCCESS )
+		{
+			std::cout << "[Brawl::Renderer::CreateTextureImage] <ERROR> "
+				"Failed to allocate memory for: Data/Textures/512.png"
+				<< std::endl;
+
+			return ErrorCode::VulkanAllocateMemoryFailed;
+		}
+
+		vkBindImageMemory( m_VulkanDevice, m_TextureImage,
+			m_TextureImageMemory, 0 );
+
+		TransitionImageLayout( m_TextureImage, VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL );
+		CopyBufferToImage( StagingBuffer, m_TextureImage,
+			static_cast< UInt32 >( Width ), static_cast< UInt32 >( Height ) );
+		TransitionImageLayout( m_TextureImage, VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL );
+
+		vkDestroyBuffer( m_VulkanDevice, StagingBuffer, Null );
+		vkFreeMemory( m_VulkanDevice, StagingBufferMemory, Null );
+
+		return ErrorCode::Okay;
+	}
+
+	ErrorCode Renderer::CreateTextureImageView( )
+	{
+		VkImageViewCreateInfo ImageViewCreateInfo = { };
+		ImageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		ImageViewCreateInfo.image = m_TextureImage;
+		ImageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		ImageViewCreateInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+		ImageViewCreateInfo.subresourceRange.aspectMask =
+			VK_IMAGE_ASPECT_COLOR_BIT;
+		ImageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+		ImageViewCreateInfo.subresourceRange.levelCount = 1;
+		ImageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+		ImageViewCreateInfo.subresourceRange.layerCount = 1;
+
+		if( vkCreateImageView( m_VulkanDevice, &ImageViewCreateInfo, Null,
+			&m_TextureImageView ) != VK_SUCCESS )
+		{
+			std::cout << "[Brawl::Renderer::CreateTextureImageView] "
+				"<ERROR> Failed to create a texture image view" << std::endl;
+
+			return ErrorCode::CreateVulkanImageViewFailed;
+		}
+
+		return ErrorCode::Okay;
+	}
+
+	ErrorCode Renderer::CreateTextureSampler( )
+	{
+		VkSamplerCreateInfo SamplerInfo = { };
+		SamplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		SamplerInfo.magFilter = VK_FILTER_LINEAR;
+		SamplerInfo.minFilter = VK_FILTER_LINEAR;
+		SamplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+		SamplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+		SamplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+		SamplerInfo.anisotropyEnable = VK_TRUE;
+		SamplerInfo.maxAnisotropy = 16;
+		SamplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+		SamplerInfo.unnormalizedCoordinates = VK_FALSE;
+		SamplerInfo.compareEnable = VK_FALSE;
+		SamplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+		SamplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		SamplerInfo.mipLodBias = 0.0f;
+		SamplerInfo.minLod = 0.0f;
+		SamplerInfo.maxLod = 0.0f;
+
+		if( vkCreateSampler( m_VulkanDevice, &SamplerInfo, Null,
+			&m_TextureSampler ) != VK_SUCCESS )
+		{
+			return ErrorCode::VulkanCreateTextureSamplerFailed;
+		}
+
+		return ErrorCode::Okay;
+	}
+
+	ErrorCode Renderer::TransitionImageLayout( VkImage p_Image,
+		VkFormat p_Format, VkImageLayout p_OldLayout,
+		VkImageLayout p_NewLayout )
+	{
+		VkCommandBuffer CommandBuffer = BeginSingleTimeCommands( );
+
+		VkImageMemoryBarrier Barrier = { };
+		Barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		Barrier.oldLayout = p_OldLayout;
+		Barrier.newLayout = p_NewLayout;
+		Barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		Barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		Barrier.image = p_Image;
+		Barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		Barrier.subresourceRange.baseMipLevel = 0;
+		Barrier.subresourceRange.levelCount = 1;
+		Barrier.subresourceRange.baseArrayLayer = 0;
+		Barrier.subresourceRange.layerCount = 1;
+		Barrier.srcAccessMask = 0;
+		Barrier.dstAccessMask = 0;
+
+		VkPipelineStageFlags SourceStage, DestinationStage;
+
+		if( p_OldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
+			p_NewLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL )
+		{
+			Barrier.srcAccessMask = 0;
+			Barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+			SourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			DestinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		}
+		else if( p_OldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
+			p_NewLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL )
+		{
+			Barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			Barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+			SourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			DestinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		}
+		else
+		{
+			std::cout << "[Brawl::Renderer::TransitionImageLayout] <ERROR> "
+				"Unsupported layout transition" << std::endl;
+
+			return ErrorCode::VulkanLayoutTransitionUnsupported;
+		}
+
+		vkCmdPipelineBarrier( CommandBuffer, SourceStage, DestinationStage,
+			0,
+			0, Null,
+			0, Null,
+			1, &Barrier );
+
+		EndSingleTimeCommands( CommandBuffer );
+
+		return ErrorCode::Okay;
+	}
+
+	ErrorCode Renderer::CopyBufferToImage( VkBuffer p_Buffer, VkImage p_Image,
+		UInt32 p_Width, UInt32 p_Height )
+	{
+		VkCommandBuffer CommandBuffer = BeginSingleTimeCommands( );
+
+		VkBufferImageCopy Region = { };
+		Region.bufferOffset = 0;
+		Region.bufferRowLength = 0;
+		Region.bufferImageHeight = 0;
+		Region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		Region.imageSubresource.mipLevel = 0;
+		Region.imageSubresource.baseArrayLayer = 0;
+		Region.imageSubresource.layerCount = 1;
+		Region.imageOffset = { 0, 0, 0 };
+		Region.imageExtent = { p_Width, p_Height, 1 };
+
+		vkCmdCopyBufferToImage( CommandBuffer, p_Buffer, p_Image,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &Region );
+
+		EndSingleTimeCommands( CommandBuffer );
 
 		return ErrorCode::Okay;
 	}
@@ -1684,6 +1984,43 @@ namespace Brawl
 		return static_cast< VkPresentModeKHR >( -1 );
 	}
 
+	VkCommandBuffer Renderer::BeginSingleTimeCommands( )
+	{
+		VkCommandBufferAllocateInfo AllocateInfo = { };
+		AllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		AllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		AllocateInfo.commandPool = m_CommandPool;
+		AllocateInfo.commandBufferCount = 1;
+
+		VkCommandBuffer CommandBuffer;
+		vkAllocateCommandBuffers( m_VulkanDevice, &AllocateInfo,
+			&CommandBuffer );
+
+		VkCommandBufferBeginInfo BeginInfo = { };
+		BeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		BeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		vkBeginCommandBuffer( CommandBuffer, &BeginInfo );
+
+		return CommandBuffer;
+	}
+
+	void Renderer::EndSingleTimeCommands( VkCommandBuffer p_CommandBuffer )
+	{
+		vkEndCommandBuffer( p_CommandBuffer );
+
+		VkSubmitInfo SubmitInfo = { };
+		SubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		SubmitInfo.commandBufferCount = 1;
+		SubmitInfo.pCommandBuffers = &p_CommandBuffer;
+
+		vkQueueSubmit( m_GraphicsQueue, 1, &SubmitInfo, VK_NULL_HANDLE );
+		vkQueueWaitIdle( m_GraphicsQueue );
+
+		vkFreeCommandBuffers( m_VulkanDevice, m_CommandPool, 1,
+			&p_CommandBuffer );
+	}
+
 	uint32_t Renderer::FindMemoryType( uint32_t p_TypeFilter,
 			VkMemoryPropertyFlags p_Properties )
 	{
@@ -1781,6 +2118,15 @@ namespace Brawl
 
 		vkGetPhysicalDeviceProperties( p_PhysicalDevice, &DeviceProperties );
 		vkGetPhysicalDeviceFeatures( p_PhysicalDevice, &DeviceFeatures );
+
+		if( DeviceFeatures.samplerAnisotropy == VK_FALSE )
+		{
+			std::cout << "[Brawl::Renderer::CheckPhysicalDeviceProperties] "
+				"<ERROR> Anisotropic filtering not supported on device \"" <<
+				p_PhysicalDevice << "\"" << std::endl;
+
+			return False;
+		}
 
 		uint32_t MajorVersion =
 			VK_VERSION_MAJOR( DeviceProperties.apiVersion );
@@ -2149,8 +2495,6 @@ namespace Brawl
 				VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0, 1,
 				&m_DescriptorSets[ Buffer ], 0, Null );
 
-			/*vkCmdDraw( m_CommandBuffers[ Buffer ],
-				static_cast< uint32_t >( m_Vertices.size( ) ), 1, 0, 0 );*/
 			vkCmdDrawIndexed( m_CommandBuffers[ Buffer ],
 				static_cast< uint32_t >( m_Indices.size( ) ), 1, 0, 0, 0 );
 			vkCmdEndRenderPass( m_CommandBuffers[ Buffer ] );

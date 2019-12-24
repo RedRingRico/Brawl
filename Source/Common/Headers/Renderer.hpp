@@ -24,9 +24,10 @@ namespace Brawl
 	{
 		float	Position[ 2 ];
 		float	Colour[ 3 ];
+		float	UV[ 2 ];
 
 		static VkVertexInputBindingDescription GetBindingDescription( );
-		static std::array< VkVertexInputAttributeDescription, 2 >
+		static std::array< VkVertexInputAttributeDescription, 3 >
 			GetAttributeDescriptions( );
 	};
 
@@ -84,6 +85,13 @@ namespace Brawl
 		ErrorCode UpdateUniformBuffer( uint32_t p_CurrentImage );
 		ErrorCode CreateDescriptorPool( );
 		ErrorCode CreateDescriptorSets( );
+		ErrorCode CreateTextureImage( );
+		ErrorCode TransitionImageLayout( VkImage p_Image, VkFormat p_Format,
+			VkImageLayout p_OldLayout, VkImageLayout p_NewLayout );
+		ErrorCode CopyBufferToImage( VkBuffer p_Buffer, VkImage p_Image,
+			UInt32 p_Width, UInt32 p_Height );
+		ErrorCode CreateTextureImageView( );
+		ErrorCode CreateTextureSampler( );
 
 		uint32_t GetSwapchainImageCount(
 			VkSurfaceCapabilitiesKHR &p_SurfaceCapabilities );
@@ -97,6 +105,8 @@ namespace Brawl
 			VkSurfaceCapabilitiesKHR &p_SurfaceCapabilities );
 		VkPresentModeKHR GetSwapchainPresentMode(
 			std::vector< VkPresentModeKHR > &p_PresentModes );
+		VkCommandBuffer BeginSingleTimeCommands( );
+		void EndSingleTimeCommands( VkCommandBuffer p_CommandBuffer );
 
 		uint32_t FindMemoryType( uint32_t p_TypeFilter,
 			VkMemoryPropertyFlags p_Properties );
@@ -150,6 +160,10 @@ namespace Brawl
 		VkDeviceMemory					m_VertexBufferMemory;
 		VkBuffer						m_IndexBuffer;
 		VkDeviceMemory					m_IndexBufferMemory;
+		VkImage							m_TextureImage;
+		VkDeviceMemory					m_TextureImageMemory;
+		VkImageView						m_TextureImageView;
+		VkSampler						m_TextureSampler;
 		std::vector< VkBuffer > 		m_UniformBuffers;
 		std::vector< VkDeviceMemory >	m_UniformBuffersMemory;
 	};

@@ -100,10 +100,14 @@ VK_DEVICE_LEVEL_FUNCTION( vkAllocateDescriptorSets )
 VK_DEVICE_LEVEL_FUNCTION( vkFreeDescriptorSets )
 VK_DEVICE_LEVEL_FUNCTION( vkUpdateDescriptorSets )
 VK_DEVICE_LEVEL_FUNCTION( vkCmdBindDescriptorSets )
-
-
-
-
+VK_DEVICE_LEVEL_FUNCTION( vkCreateImage )
+VK_DEVICE_LEVEL_FUNCTION( vkDestroyImage )
+VK_DEVICE_LEVEL_FUNCTION( vkGetImageMemoryRequirements )
+VK_DEVICE_LEVEL_FUNCTION( vkBindImageMemory )
+VK_DEVICE_LEVEL_FUNCTION( vkCmdPipelineBarrier )
+VK_DEVICE_LEVEL_FUNCTION( vkCmdCopyBufferToImage )
+VK_DEVICE_LEVEL_FUNCTION( vkCreateSampler )
+VK_DEVICE_LEVEL_FUNCTION( vkDestroySampler )
 
 #undef VK_DEVICE_LEVEL_FUNCTION
 
