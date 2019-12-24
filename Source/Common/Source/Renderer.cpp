@@ -484,9 +484,10 @@ namespace Brawl
 	{
 		std::vector< const char * > ValidationLayers =
 		{
+#if defined ( BRAWL_BUILD_DEBUG )
 			"VK_LAYER_KHRONOS_validation",
-			//"VK_LAYER_LUNARG_parameter_validation",
 			"VK_LAYER_LUNARG_standard_validation"
+#endif // BRAWL_BUILD_DEBUG
 		};
 
 		if( CheckValidationLayerSupport( ValidationLayers ) == False )
@@ -526,7 +527,6 @@ namespace Brawl
 			return ErrorCode::CreateVulkanInstanceFailed;
 		}
 
-#if defined( BRAWL_BUILD_DEBUG )
 		std::cout << "[Brawl::Renderer::CreateVulkanInstance] <INFO> "
 			"Discovered " << AvailableExtensions.size( ) << " extensions" <<
 			std::endl;
@@ -535,7 +535,6 @@ namespace Brawl
 		{
 			std::cout << "\t" << Extension.extensionName << std::endl;
 		}
-#endif // BRAWL_BUILD_DEBUG
 
 		std::vector< const char * > Extensions =
 		{
