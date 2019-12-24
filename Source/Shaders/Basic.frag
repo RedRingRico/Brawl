@@ -13,7 +13,5 @@ layout( location = 0 ) out vec4 o_Colour;
 
 void main( )
 {
-	//o_Colour = vec4( i_Colour, 1.0 );
-	//o_Colour = vec4( i_UV, 0.0, 1.0 );
 	o_Colour = texture( u_Sampler, i_UV );
 }

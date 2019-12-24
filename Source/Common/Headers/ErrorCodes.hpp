@@ -67,6 +67,7 @@ namespace Brawl
 		VulkanCreateImageFailed,
 		VulkanLayoutTransitionUnsupported,
 		VulkanCreateTextureSamplerFailed,
+		CreateDepthResourcesFailed,
 
 		// System
 		CloseLibraryFailed = -1000,

@@ -37,7 +37,7 @@ namespace Brawl
 
 		AttributeDescriptions[ 0 ].binding = 0;
 		AttributeDescriptions[ 0 ].location = 0;
-		AttributeDescriptions[ 0 ].format = VK_FORMAT_R32G32_SFLOAT;
+		AttributeDescriptions[ 0 ].format = VK_FORMAT_R32G32B32_SFLOAT;
 		AttributeDescriptions[ 0 ].offset = offsetof( Vertex, Position );
 
 		AttributeDescriptions[ 1 ].binding = 0;
@@ -85,6 +85,9 @@ namespace Brawl
 		m_PresentationSurface( VK_NULL_HANDLE ),
 		m_Swapchain( VK_NULL_HANDLE ),
 		m_SwapchainExtent( { 0, 0 } ),
+		m_DepthImage( VK_NULL_HANDLE ),
+		m_DepthImageMemory( VK_NULL_HANDLE ),
+		m_DepthImageView( VK_NULL_HANDLE ),
 		m_DescriptorSetLayout( VK_NULL_HANDLE ),
 		m_PipelineLayout( VK_NULL_HANDLE ),
 		m_GraphicsPipeline( VK_NULL_HANDLE ),
@@ -109,6 +112,7 @@ namespace Brawl
 
 		NewVertex.Position[ 0 ] = -0.5f;
 		NewVertex.Position[ 1 ] = -0.5f;
+		NewVertex.Position[ 2 ] = 0.0f;
 		NewVertex.Colour[ 0 ] = 1.0f;
 		NewVertex.Colour[ 1 ] = 0.0f;
 		NewVertex.Colour[ 2 ] = 0.0f;
@@ -147,7 +151,52 @@ namespace Brawl
 
 		m_Vertices.push_back( NewVertex );
 
-		m_Indices = { 0, 1, 2, 2, 3, 0 };
+		NewVertex.Position[ 0 ] = -0.5f;
+		NewVertex.Position[ 1 ] = -0.5f;
+		NewVertex.Position[ 2 ] = -0.05f;
+		NewVertex.Colour[ 0 ] = 1.0f;
+		NewVertex.Colour[ 1 ] = 0.0f;
+		NewVertex.Colour[ 2 ] = 0.0f;
+		NewVertex.UV[ 0 ] = 1.0f;
+		NewVertex.UV[ 1 ] = 1.0f;
+
+		m_Vertices.push_back( NewVertex );
+
+		NewVertex.Position[ 0 ] = 0.5f;
+		NewVertex.Position[ 1 ] = -0.5f;
+		NewVertex.Colour[ 0 ] = 0.0f;
+		NewVertex.Colour[ 1 ] = 1.0f;
+		NewVertex.Colour[ 2 ] = 0.0f;
+		NewVertex.UV[ 0 ] = 0.0f;
+		NewVertex.UV[ 1 ] = 1.0f;
+
+		m_Vertices.push_back( NewVertex );
+
+		NewVertex.Position[ 0 ] = 0.5f;
+		NewVertex.Position[ 1 ] = 0.5f;
+		NewVertex.Colour[ 0 ] = 0.0f;
+		NewVertex.Colour[ 1 ] = 0.0f;
+		NewVertex.Colour[ 2 ] = 1.0f;
+		NewVertex.UV[ 0 ] = 0.0f;
+		NewVertex.UV[ 1 ] = 0.0f;
+
+		m_Vertices.push_back( NewVertex );
+
+		NewVertex.Position[ 0 ] = -0.5f;
+		NewVertex.Position[ 1 ] = 0.5f;
+		NewVertex.Colour[ 0 ] = 1.0f;
+		NewVertex.Colour[ 1 ] = 1.0f;
+		NewVertex.Colour[ 2 ] = 1.0f;
+		NewVertex.UV[ 0 ] = 1.0f;
+		NewVertex.UV[ 1 ] = 0.0f;
+
+		m_Vertices.push_back( NewVertex );
+
+		m_Indices =
+		{
+			0, 1, 2, 2, 3, 0,
+			4, 5, 6, 6, 7, 4
+		};
 	}
 
 	Renderer::~Renderer( )
@@ -226,14 +275,19 @@ namespace Brawl
 			return ErrorCode::CreateVulkanGraphicsPipelineFailed;
 		}
 
-		if( CreateFramebuffers( ) != ErrorCode::Okay )
-		{
-			return ErrorCode::CreateVulkanFramebuffersFailed;
-		}
-
 		if( CreateCommandPool( ) != ErrorCode::Okay )
 		{
 			return ErrorCode::CreateVulkanCommandPoolFailed;
+		}
+
+		if( CreateDepthResources( ) != ErrorCode::Okay )
+		{
+			return ErrorCode::CreateDepthResourcesFailed;
+		}
+
+		if( CreateFramebuffers( ) != ErrorCode::Okay )
+		{
+			return ErrorCode::CreateVulkanFramebuffersFailed;
 		}
 
 		if( CreateTextureImage( ) != ErrorCode::Okay )
@@ -824,6 +878,10 @@ namespace Brawl
 
 	ErrorCode Renderer::CleanupSwapchain( )
 	{
+		vkDestroyImageView( m_VulkanDevice, m_DepthImageView, Null );
+		vkDestroyImage( m_VulkanDevice, m_DepthImage, Null );
+		vkFreeMemory( m_VulkanDevice, m_DepthImageMemory, Null );
+
 		for( auto Framebuffer : m_SwapchainFramebuffers )
 		{
 			vkDestroyFramebuffer( m_VulkanDevice, Framebuffer, Null );
@@ -880,6 +938,7 @@ namespace Brawl
 		CreateSwapchainImageViews( );
 		CreateRenderPass( );
 		CreateGraphicsPipeline( );
+		CreateDepthResources( );
 		CreateFramebuffers( );
 		CreateUniformBuffers( );
 		CreateDescriptorPool( );
@@ -896,40 +955,9 @@ namespace Brawl
 
 		for( size_t Index = 0; Index < m_SwapchainImages.size( ); ++Index )
 		{
-			VkImageViewCreateInfo ImageViewCreateInfo =
-			{
-				VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-				Null,
-				0,
-				m_SwapchainImages[ Index ],
-				VK_IMAGE_VIEW_TYPE_2D,
-				m_SwapchainImageFormat,
-				// VkComponentMapping
-				{
-					VK_COMPONENT_SWIZZLE_IDENTITY,
-					VK_COMPONENT_SWIZZLE_IDENTITY,
-					VK_COMPONENT_SWIZZLE_IDENTITY,
-					VK_COMPONENT_SWIZZLE_IDENTITY
-				},
-				// vkImageSubresourceRange
-				{
-					VK_IMAGE_ASPECT_COLOR_BIT,
-					0,
-					1,
-					0,
-					1
-				}
-			};
-
-			if( vkCreateImageView( m_VulkanDevice, &ImageViewCreateInfo, Null,
-				&m_SwapchainImageViews[ Index ] ) != VK_SUCCESS )
-			{
-				std::cout << "[Brawl::Renderer::CreateSwapchainImageViews] "
-					"<ERROR> Failed to create image view at index: " <<
-					Index << std::endl;
-
-				return ErrorCode::CreateVulkanImageViewFailed;
-			}
+			m_SwapchainImageViews[ Index ] = CreateImageView(
+				m_SwapchainImages[ Index ], m_SwapchainImageFormat,
+				VK_IMAGE_ASPECT_COLOR_BIT );
 
 			std::cout << "[Brawl::Renderer::CreateSwapchainImageViews] <INFO> "
 				"Created swap chain image view: " << Index << std::endl;
@@ -953,11 +981,27 @@ namespace Brawl
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
 		};
 
+		VkAttachmentDescription DepthAttachment = { };
+		DepthAttachment.format = FindDepthFormat( );
+		DepthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+		DepthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		DepthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		DepthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		DepthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		DepthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		DepthAttachment.finalLayout =
+			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
 		VkAttachmentReference ColourAttachmentReference =
 		{
 			0,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
 		};
+
+		VkAttachmentReference DepthAttachmentReference = { };
+		DepthAttachmentReference.attachment = 1;
+		DepthAttachmentReference.layout =
+			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
 		VkSubpassDescription Subpass =
 		{
@@ -968,7 +1012,7 @@ namespace Brawl
 			1,
 			&ColourAttachmentReference,
 			Null,
-			Null,
+			&DepthAttachmentReference,
 			0,
 			Null
 		};
@@ -985,13 +1029,18 @@ namespace Brawl
 			0
 		};
 
+		std::array< VkAttachmentDescription, 2 > Attachments =
+		{
+			ColourAttachment, DepthAttachment
+		};
+
 		VkRenderPassCreateInfo RenderPassInfo =
 		{
 			VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
 			Null,
 			0,
-			1,
-			&ColourAttachment,
+			static_cast< uint32_t >( Attachments.size( ) ),
+			Attachments.data( ),
 			1,
 			&Subpass,
 			1,
@@ -1165,6 +1214,19 @@ namespace Brawl
 			VK_FALSE
 		};
 
+		VkPipelineDepthStencilStateCreateInfo DepthStencil = { };
+		DepthStencil.sType =
+			VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+		DepthStencil.depthTestEnable = VK_TRUE;
+		DepthStencil.depthWriteEnable = VK_TRUE;
+		DepthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+		DepthStencil.depthBoundsTestEnable = VK_FALSE;
+		DepthStencil.minDepthBounds = 0.0f;
+		DepthStencil.maxDepthBounds = 1.0f;
+		DepthStencil.stencilTestEnable = VK_FALSE;
+		DepthStencil.front = { };
+		DepthStencil.back = { };
+
 		VkPipelineColorBlendAttachmentState ColourBlendAttachmentState =
 		{
 			VK_FALSE,
@@ -1225,7 +1287,7 @@ namespace Brawl
 			&ViewportStateInfo,
 			&RasterisationStateInfo,
 			&MultisampleStateInfo,
-			Null,
+			&DepthStencil,
 			&ColourBlendStateInfo,
 			Null,
 			m_PipelineLayout,
@@ -1253,9 +1315,10 @@ namespace Brawl
 
 		for( size_t View = 0; View < m_SwapchainImageViews.size( ); ++View )
 		{
-			VkImageView Attachments [ ] =
+			std::array< VkImageView, 2 > Attachments =
 			{
-				m_SwapchainImageViews[ View ]
+				m_SwapchainImageViews[ View ],
+				m_DepthImageView
 			};
 
 			VkFramebufferCreateInfo FramebufferInfo =
@@ -1264,8 +1327,8 @@ namespace Brawl
 				Null,
 				0,
 				m_RenderPass,
-				1,
-				Attachments,
+				static_cast< uint32_t >( Attachments.size( ) ),
+				Attachments.data( ),
 				m_SwapchainExtent.width,
 				m_SwapchainExtent.height,
 				1
@@ -1664,7 +1727,14 @@ namespace Brawl
 
 		stbi_image_free( pPixels );
 
-		VkImageCreateInfo ImageInfo = { };
+		CreateImage( Width, Height, VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+				VK_IMAGE_USAGE_SAMPLED_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_TextureImage,
+			m_TextureImageMemory );
+
+		/*VkImageCreateInfo ImageInfo = { };
 		ImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 		ImageInfo.imageType = VK_IMAGE_TYPE_2D;
 		ImageInfo.extent.width = static_cast< uint32_t >( Width );
@@ -1713,7 +1783,7 @@ namespace Brawl
 		}
 
 		vkBindImageMemory( m_VulkanDevice, m_TextureImage,
-			m_TextureImageMemory, 0 );
+			m_TextureImageMemory, 0 );*/
 
 		TransitionImageLayout( m_TextureImage, VK_FORMAT_R8G8B8A8_UNORM,
 			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL );
@@ -1731,26 +1801,8 @@ namespace Brawl
 
 	ErrorCode Renderer::CreateTextureImageView( )
 	{
-		VkImageViewCreateInfo ImageViewCreateInfo = { };
-		ImageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		ImageViewCreateInfo.image = m_TextureImage;
-		ImageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		ImageViewCreateInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-		ImageViewCreateInfo.subresourceRange.aspectMask =
-			VK_IMAGE_ASPECT_COLOR_BIT;
-		ImageViewCreateInfo.subresourceRange.baseMipLevel = 0;
-		ImageViewCreateInfo.subresourceRange.levelCount = 1;
-		ImageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-		ImageViewCreateInfo.subresourceRange.layerCount = 1;
-
-		if( vkCreateImageView( m_VulkanDevice, &ImageViewCreateInfo, Null,
-			&m_TextureImageView ) != VK_SUCCESS )
-		{
-			std::cout << "[Brawl::Renderer::CreateTextureImageView] "
-				"<ERROR> Failed to create a texture image view" << std::endl;
-
-			return ErrorCode::CreateVulkanImageViewFailed;
-		}
+		m_TextureImageView = CreateImageView( m_TextureImage,
+			VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT );
 
 		return ErrorCode::Okay;
 	}
@@ -1784,6 +1836,26 @@ namespace Brawl
 		return ErrorCode::Okay;
 	}
 
+	ErrorCode Renderer::CreateDepthResources( )
+	{
+		VkFormat DepthFormat = FindDepthFormat( );
+
+		CreateImage( m_SwapchainExtent.width, m_SwapchainExtent.height,
+			DepthFormat, VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_DepthImage,
+			m_DepthImageMemory );
+
+		m_DepthImageView = CreateImageView( m_DepthImage, DepthFormat,
+			VK_IMAGE_ASPECT_DEPTH_BIT );
+
+		TransitionImageLayout( m_DepthImage, DepthFormat,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL );
+
+		return ErrorCode::Okay;
+	}
+
 	ErrorCode Renderer::TransitionImageLayout( VkImage p_Image,
 		VkFormat p_Format, VkImageLayout p_OldLayout,
 		VkImageLayout p_NewLayout )
@@ -1805,6 +1877,21 @@ namespace Brawl
 		Barrier.srcAccessMask = 0;
 		Barrier.dstAccessMask = 0;
 
+		if( p_NewLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL )
+		{
+			Barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+			if( HasStencilComponent( p_Format ) )
+			{
+				Barrier.subresourceRange.aspectMask |=
+					VK_IMAGE_ASPECT_STENCIL_BIT;
+			}
+		}
+		else
+		{
+			Barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		}
+
 		VkPipelineStageFlags SourceStage, DestinationStage;
 
 		if( p_OldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
@@ -1824,6 +1911,17 @@ namespace Brawl
 
 			SourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 			DestinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		}
+		else if( p_OldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
+			p_NewLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL )
+		{
+			Barrier.srcAccessMask = 0;
+			Barrier.dstAccessMask =
+				VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+				VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+			SourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			DestinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
 		}
 		else
 		{
@@ -2019,6 +2117,137 @@ namespace Brawl
 
 		vkFreeCommandBuffers( m_VulkanDevice, m_CommandPool, 1,
 			&p_CommandBuffer );
+	}
+
+	VkFormat Renderer::FindSupportedFormat(
+		const std::vector< VkFormat > &p_Candidates,
+		VkImageTiling p_Tiling, VkFormatFeatureFlags p_Flags )
+	{
+		for( auto Format : p_Candidates )
+		{
+			VkFormatProperties Properties;
+			vkGetPhysicalDeviceFormatProperties( m_VulkanPhysicalDevice,
+				Format, &Properties );
+
+			if( p_Tiling == VK_IMAGE_TILING_LINEAR &&
+				( Properties.linearTilingFeatures & p_Flags ) == p_Flags )
+			{
+				return Format;
+			}
+			else if( p_Tiling == VK_IMAGE_TILING_OPTIMAL &&
+				( Properties.optimalTilingFeatures & p_Flags ) == p_Flags )
+			{
+				return Format;
+			}
+		}
+
+		return static_cast< VkFormat >( -1 );
+	}
+
+	VkFormat Renderer::FindDepthFormat( )
+	{
+		return FindSupportedFormat(
+			{
+				VK_FORMAT_D32_SFLOAT,
+				VK_FORMAT_D32_SFLOAT_S8_UINT,
+				VK_FORMAT_D24_UNORM_S8_UINT
+			},
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT );
+	}
+
+	Bool Renderer::HasStencilComponent( VkFormat p_Format )
+	{
+		return	( p_Format == VK_FORMAT_D32_SFLOAT_S8_UINT ) ||
+				( p_Format == VK_FORMAT_D24_UNORM_S8_UINT );
+	}
+
+	VkImageView Renderer::CreateImageView( VkImage p_Image, VkFormat p_Format,
+		VkImageAspectFlags p_AspectFlags )
+	{
+
+		VkImageViewCreateInfo ImageViewCreateInfo = { };
+
+		ImageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		ImageViewCreateInfo.image = p_Image;
+		ImageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		ImageViewCreateInfo.format = p_Format;
+		ImageViewCreateInfo.subresourceRange.aspectMask = p_AspectFlags;
+		ImageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+		ImageViewCreateInfo.subresourceRange.levelCount = 1;
+		ImageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+		ImageViewCreateInfo.subresourceRange.layerCount = 1;
+
+		VkImageView ImageView;
+
+		if( vkCreateImageView( m_VulkanDevice, &ImageViewCreateInfo, Null,
+			&ImageView ) != VK_SUCCESS )
+		{
+			std::cout << "[Brawl::Renderer::CreateImageView] <ERROR> "
+				"Failed to create an image view" << std::endl;
+
+			return VK_NULL_HANDLE;
+		}
+
+		return ImageView;
+	}
+
+	ErrorCode Renderer::CreateImage( UInt32 p_Width, UInt32 p_Height,
+		VkFormat p_Format, VkImageTiling p_Tiling,
+		VkImageUsageFlags p_Usage,
+		VkMemoryPropertyFlags p_MemoryProperties, VkImage &p_Image,
+		VkDeviceMemory &p_Memory )
+	{
+		VkImageCreateInfo ImageInfo = { };
+		ImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		ImageInfo.imageType = VK_IMAGE_TYPE_2D;
+		ImageInfo.extent.width =  p_Width;
+		ImageInfo.extent.height = p_Height;
+		ImageInfo.extent.depth = 1;
+		ImageInfo.mipLevels = 1;
+		ImageInfo.arrayLayers = 1;
+		ImageInfo.format = p_Format;
+		ImageInfo.tiling = p_Tiling;
+		ImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		ImageInfo.usage = p_Usage;
+		ImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		ImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		ImageInfo.flags = 0;
+
+		if( vkCreateImage( m_VulkanDevice, &ImageInfo, Null, &p_Image )
+			!= VK_SUCCESS )
+		{
+			std::cout << "[Brawl::Renderer::CreateTextureImage] <ERROR> "
+				"Failed to create iamge: Data/Textures/512.png"
+				<< std::endl;
+
+			return ErrorCode::VulkanCreateImageFailed;
+		}
+
+		VkMemoryRequirements MemoryRequirements;
+		vkGetImageMemoryRequirements( m_VulkanDevice, p_Image,
+			&MemoryRequirements );
+
+		VkMemoryAllocateInfo AllocateInfo = { };
+		AllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		AllocateInfo.allocationSize = MemoryRequirements.size;
+		AllocateInfo.memoryTypeIndex = FindMemoryType(
+			MemoryRequirements.memoryTypeBits,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
+
+		if( vkAllocateMemory( m_VulkanDevice, &AllocateInfo, Null, &p_Memory )
+			!= VK_SUCCESS )
+		{
+			std::cout << "[Brawl::Renderer::CreateTextureImage] <ERROR> "
+				"Failed to allocate memory for: Data/Textures/512.png"
+				<< std::endl;
+
+			return ErrorCode::VulkanAllocateMemoryFailed;
+		}
+
+		vkBindImageMemory( m_VulkanDevice, p_Image, p_Memory, 0 );
+
+		return ErrorCode::Okay;
 	}
 
 	uint32_t Renderer::FindMemoryType( uint32_t p_TypeFilter,
@@ -2462,8 +2691,10 @@ namespace Brawl
 				return ErrorCode::VulkanBeginCommandBufferFailed;
 			}
 
-			VkClearValue ClearColour =
+			std::array< VkClearValue, 2 > ClearValues = { };
+			ClearValues[ 0 ].color =
 				{ 0.0f, 17.0f / 255.0f, 43.0f / 255.0f, 1.0f };
+			ClearValues[ 1 ].depthStencil = { 1.0f, 0 };
 
 			VkRenderPassBeginInfo RenderPassBeginInfo =
 			{
@@ -2475,8 +2706,8 @@ namespace Brawl
 					{ 0, 0 },
 					m_SwapchainExtent
 				},
-				1,
-				&ClearColour
+				static_cast< uint32_t >( ClearValues.size( ) ),
+				ClearValues.data( )
 			};
 
 			vkCmdBeginRenderPass( m_CommandBuffers[ Buffer ],

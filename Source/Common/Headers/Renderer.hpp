@@ -22,7 +22,7 @@ namespace Brawl
 
 	struct Vertex
 	{
-		float	Position[ 2 ];
+		float	Position[ 3 ];
 		float	Colour[ 3 ];
 		float	UV[ 2 ];
 
@@ -92,6 +92,7 @@ namespace Brawl
 			UInt32 p_Width, UInt32 p_Height );
 		ErrorCode CreateTextureImageView( );
 		ErrorCode CreateTextureSampler( );
+		ErrorCode CreateDepthResources( );
 
 		uint32_t GetSwapchainImageCount(
 			VkSurfaceCapabilitiesKHR &p_SurfaceCapabilities );
@@ -107,6 +108,18 @@ namespace Brawl
 			std::vector< VkPresentModeKHR > &p_PresentModes );
 		VkCommandBuffer BeginSingleTimeCommands( );
 		void EndSingleTimeCommands( VkCommandBuffer p_CommandBuffer );
+		VkFormat FindSupportedFormat(
+			const std::vector< VkFormat > &p_Candidates,
+			VkImageTiling p_Tiling, VkFormatFeatureFlags p_Flags );
+		VkFormat FindDepthFormat( );
+		Bool HasStencilComponent( VkFormat p_Format );
+		ErrorCode CreateImage( UInt32 p_Width, UInt32 p_Height,
+			VkFormat p_Format, VkImageTiling p_Tiling,
+			VkImageUsageFlags p_Usage,
+			VkMemoryPropertyFlags p_MemoryProperties, VkImage &p_Image,
+			VkDeviceMemory &p_Memory );
+		VkImageView CreateImageView( VkImage p_Image, VkFormat p_Format,
+			VkImageAspectFlags p_AspectFlags );
 
 		uint32_t FindMemoryType( uint32_t p_TypeFilter,
 			VkMemoryPropertyFlags p_Properties );
@@ -139,6 +152,9 @@ namespace Brawl
 		std::vector< VkImage >			m_SwapchainImages;
 		std::vector< VkImageView >		m_SwapchainImageViews;
 		VkFormat						m_SwapchainImageFormat;
+		VkImage							m_DepthImage;
+		VkDeviceMemory					m_DepthImageMemory;
+		VkImageView						m_DepthImageView;
 		std::vector< VkFramebuffer >	m_SwapchainFramebuffers;
 		VkDescriptorSetLayout			m_DescriptorSetLayout;
 		VkPipelineLayout				m_PipelineLayout;

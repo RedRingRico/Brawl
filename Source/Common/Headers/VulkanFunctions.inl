@@ -35,6 +35,7 @@ VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceCapabilitiesKHR )
 VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfaceFormatsKHR )
 VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceSurfacePresentModesKHR )
 VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceMemoryProperties )
+VK_INSTANCE_LEVEL_FUNCTION( vkGetPhysicalDeviceFormatProperties )
 
 #undef VK_INSTANCE_LEVEL_FUNCTION
 
